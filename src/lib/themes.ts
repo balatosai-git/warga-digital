@@ -129,6 +129,7 @@ const orange: Theme = {
     bgGradientStart: "#fffaf5",
     bgGradientEnd: "#fff3eb",
     inputBorder: "#f5e6dc",
+    primaryShadow: "rgba(230,81,0,0.75)",
   },
 };
 
