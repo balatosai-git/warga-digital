@@ -49,7 +49,7 @@ export const LANDING_FEATURES = [
     id: "organisasi",
     label: "Organisasi",
     description: "Struktur & kontak pengurus",
-    href: "#organisasi",
+    href: "/organisasi",
     icon: "👥",
   },
   {

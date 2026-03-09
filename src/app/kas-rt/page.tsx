@@ -19,6 +19,9 @@ interface TransactionItem {
   amount: number;
   type: TransactionType;
   date: string;
+  created_at?: string;
+  created_by?: string | null;
+  created_by_full_name?: string | null;
   reference: string;
   details: string | null;
   category: string | null;
@@ -89,6 +92,13 @@ export default function KasRTPage() {
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
   const [refreshedAt, setRefreshedAt] = useState(now);
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [downloadStartDate, setDownloadStartDate] = useState("");
+  const [downloadEndDate, setDownloadEndDate] = useState(toDateInputValue(now));
+  const [downloadCategory, setDownloadCategory] = useState("");
+  const [downloadBlock, setDownloadBlock] = useState("");
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -100,6 +110,8 @@ export default function KasRTPage() {
   const [canSubmitTransaction, setCanSubmitTransaction] = useState(false);
   /** True until the first transaction load completes (used for full-page loading spinner). */
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  /** Lightweight in-page toast for success notifications. */
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const isIncomeForm = form.type === "income";
 
@@ -115,6 +127,13 @@ export default function KasRTPage() {
     }
   }, [hasMounted, isAuthenticated, router]);
 
+  useEffect(() => {
+    if (!successMessage) return;
+    const timeoutId = window.setTimeout(() => {
+      setSuccessMessage(null);
+    }, 3500);
+    return () => window.clearTimeout(timeoutId);
+  }, [successMessage]);
 
   const totals = useMemo(() => {
     const balance = transactions.reduce((sum, tx) => {
@@ -150,7 +169,12 @@ export default function KasRTPage() {
         if (endDate && tx.date > endDate) return false;
         return true;
       })
-      .sort((a, b) => (a.date < b.date ? 1 : -1));
+      .sort((a, b) => {
+        const aKey = a.created_at ?? a.date;
+        const bKey = b.created_at ?? b.date;
+        if (aKey === bKey) return 0;
+        return aKey < bKey ? 1 : -1;
+      });
   }, [transactions, typeFilter, categoryFilter, startDate, endDate]);
 
   const isStep1Valid = form.type === "income" || form.type === "expense";
@@ -191,6 +215,60 @@ export default function KasRTPage() {
     await loadTransactions();
     setIsRefreshing(false);
     setPullDistance(0);
+    setRefreshedAt(new Date());
+  };
+
+  const handleDownloadReport = async () => {
+    if (isDownloading) return;
+
+    if (!downloadStartDate || !downloadEndDate) {
+      setDownloadError("Silakan pilih rentang tanggal laporan.");
+      return;
+    }
+
+    setDownloadError(null);
+    setIsDownloading(true);
+
+    try {
+      const params = new URLSearchParams();
+      params.set("startDate", downloadStartDate);
+      params.set("endDate", downloadEndDate);
+      if (downloadCategory.trim()) {
+        params.set("category", downloadCategory.trim());
+      }
+      if (downloadBlock.trim()) {
+        params.set("block", downloadBlock.trim());
+      }
+
+      const response = await fetch(`/api/kas-rt/transactions/report?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Gagal mengunduh laporan kas RT.");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const safeStart = downloadStartDate || "awal";
+      const safeEnd = downloadEndDate || "akhir";
+      link.download = `laporan-kas-rt-${safeStart}-sd-${safeEnd}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setIsDownloadModalOpen(false);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("[Kas RT] Gagal mengunduh laporan", error);
+      setDownloadError(
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat mengunduh laporan. Coba lagi nanti."
+      );
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   useEffect(() => {
@@ -314,6 +392,9 @@ export default function KasRTPage() {
       setAttachmentLabel("Belum ada file dipilih");
       setFormStep(1);
       setIsFormOpen(false);
+      // Auto-refresh list from server and show modern toast
+      void refreshData();
+      setSuccessMessage("Transaksi kas RT berhasil disimpan.");
     } catch (error) {
       if (error instanceof Error) {
         setFormError(error.message);
@@ -374,27 +455,54 @@ export default function KasRTPage() {
           </div>
 
           <div className="mt-4 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => setIsFilterOpen((prev) => !prev)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/95 text-emerald-800 shadow-sm transition hover:bg-white active:scale-[0.98]"
-              aria-expanded={isFilterOpen}
-              aria-controls="transaction-filter-panel"
-              aria-label={isFilterOpen ? "Tutup filter" : "Buka filter transaksi"}
-            >
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsFilterOpen((prev) => !prev)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/95 text-emerald-800 shadow-sm transition hover:bg-white active:scale-[0.98]"
+                aria-expanded={isFilterOpen}
+                aria-controls="transaction-filter-panel"
+                aria-label={isFilterOpen ? "Tutup filter" : "Buka filter transaksi"}
               >
-                <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
-              </svg>
-            </button>
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+                </svg>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDownloadError(null);
+                  setIsDownloadModalOpen(true);
+                }}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/95 text-emerald-800 shadow-sm transition hover:bg-white active:scale-[0.98]"
+                aria-label="Unduh laporan kas RT"
+              >
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M12 3v12" />
+                  <path d="M8 11l4 4 4-4" />
+                  <path d="M4 19h16" />
+                </svg>
+              </button>
+            </div>
             {canSubmitTransaction && (
               <button
                 type="button"
@@ -507,6 +615,12 @@ export default function KasRTPage() {
                         <span>{tx.category}</span>
                       </>
                     )}
+                    {tx.created_by_full_name && (
+                      <>
+                        <span className="inline-block h-1 w-1 rounded-full bg-emerald-300" aria-hidden />
+                        <span>Dicatat oleh: {tx.created_by_full_name}</span>
+                      </>
+                    )}
                   </div>
 
                   {tx.attachments?.length ? (
@@ -562,6 +676,112 @@ export default function KasRTPage() {
           )}
         </section>
       </div>
+
+      {isDownloadModalOpen && (
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40"
+          onClick={() => {
+            if (!isDownloading) {
+              setIsDownloadModalOpen(false);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-[430px] rounded-t-3xl bg-app-surface p-4 shadow-[0_-16px_40px_-24px_rgba(15,23,42,0.6)]"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kas-rt-download-title"
+          >
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h2 id="kas-rt-download-title" className="text-base font-bold text-app-title">
+                  Unduh laporan kas RT
+                </h2>
+                <p className="mt-1 text-xs text-app-body-muted">
+                  Pilih rentang tanggal dan filter opsional sebelum mengunduh laporan.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isDownloading && setIsDownloadModalOpen(false)}
+                className="rounded-full px-2 py-1 text-xs font-semibold text-app-body-muted hover:bg-app-surface-alt/70 disabled:opacity-50"
+                disabled={isDownloading}
+              >
+                Tutup
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-xs font-medium text-app-body">
+                  Tanggal mulai
+                  <input
+                    type="date"
+                    value={downloadStartDate}
+                    onChange={(event) => setDownloadStartDate(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-app-body focus:border-emerald-400 focus:outline-none focus-visible:outline-none"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-app-body">
+                  Tanggal akhir
+                  <input
+                    type="date"
+                    value={downloadEndDate}
+                    onChange={(event) => setDownloadEndDate(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-app-body focus:border-emerald-400 focus:outline-none focus-visible:outline-none"
+                  />
+                </label>
+              </div>
+
+              <label className="block text-xs font-medium text-app-body">
+                Kategori
+                <input
+                  type="text"
+                  value={downloadCategory}
+                  onChange={(event) => setDownloadCategory(event.target.value)}
+                  placeholder="Biarkan kosong untuk semua kategori"
+                  className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-app-body focus:border-emerald-400 focus:outline-none focus-visible:outline-none"
+                />
+              </label>
+
+              <label className="block text-xs font-medium text-app-body">
+                Blok
+                <input
+                  type="text"
+                  value={downloadBlock}
+                  onChange={(event) => setDownloadBlock(event.target.value)}
+                  placeholder="Biarkan kosong untuk semua blok"
+                  className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-app-body focus:border-emerald-400 focus:outline-none focus-visible:outline-none"
+                />
+              </label>
+
+              {downloadError && (
+                <p className="text-xs text-red-600">{downloadError}</p>
+              )}
+
+              <div className="mt-2 flex items-center justify-between gap-2 border-t border-emerald-100/60 pt-3">
+                <button
+                  type="button"
+                  onClick={() => !isDownloading && setIsDownloadModalOpen(false)}
+                  className="rounded-2xl px-4 py-2 text-xs font-semibold text-app-body-muted disabled:opacity-50"
+                  disabled={isDownloading}
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadReport}
+                  disabled={isDownloading}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isDownloading ? "Menyiapkan laporan..." : "Unduh laporan"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isFormOpen && (
         <div
@@ -868,6 +1088,25 @@ export default function KasRTPage() {
                 )}
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
+          <div className="pointer-events-auto flex max-w-sm items-center gap-3 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_40px_-20px_rgba(5,46,22,0.85)]">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/70 text-xs">
+              ✓
+            </span>
+            <p className="flex-1">{successMessage}</p>
+            <button
+              type="button"
+              onClick={() => setSuccessMessage(null)}
+              className="ml-1 rounded-full p-1 text-emerald-50/80 transition hover:bg-emerald-500/40 hover:text-white"
+            >
+              <span className="sr-only">Tutup notifikasi</span>
+              ✕
+            </button>
           </div>
         </div>
       )}

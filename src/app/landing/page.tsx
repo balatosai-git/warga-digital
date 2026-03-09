@@ -83,6 +83,7 @@ export default function LandingPage() {
     profilePictureUrl: string | null;
     blokRumah: string;
   } | null>(null);
+  const [showVersionBanner, setShowVersionBanner] = useState(true);
 
   const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => {
@@ -143,6 +144,21 @@ export default function LandingPage() {
       />
 
       <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        {showVersionBanner && (
+          <div className="flex items-start gap-3 border-b border-app-primary/60 bg-app-primary-muted px-4 py-3 text-xs text-app-title shadow-sm">
+            <p className="flex-1 text-[13px] leading-snug">
+              <span className="font-semibold">Versi 1.0.0</span>: versi minimum yang di rilis, baru bisa
+              pencatatan, laporan transaksi RT, lihat organisasi. selebihnya belum matang.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowVersionBanner(false)}
+              className="ml-2 shrink-0 rounded-full px-2 py-1 text-[11px] font-medium text-app-primary transition hover:bg-app-surface hover:text-app-primary active:opacity-80"
+            >
+              Tutup
+            </button>
+          </div>
+        )}
         <FeatureGrid />
 
         <HorizontalCardStrip

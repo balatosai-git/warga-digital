@@ -135,17 +135,24 @@ export default function OrganisasiPage() {
       .finally(() => setLoading(false));
   }, [hasMounted, isAuthenticated]);
 
-  if (!hasMounted || !isAuthenticated) {
-    return <PageLoader message="Memuat..." />;
+  const isInitialLoading = loading && !tree && !error;
+
+  if (!hasMounted || !isAuthenticated || isInitialLoading) {
+    return <PageLoader message="Memuat struktur organisasi..." />;
   }
 
   return (
     <main className="flex h-full min-h-0 flex-col bg-app-surface-alt">
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-4">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-bold text-app-title">
-            Struktur Organisasi RT 03
-          </h1>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-app-title">
+              Struktur Organisasi RT 03
+            </h1>
+            <p className="mt-1 text-sm text-app-body-muted">
+              Lihat susunan pengurus dan kontak penting untuk wilayah RT 03.
+            </p>
+          </div>
           {canManageOrganisation && (
             <Link
               href="/organisasi/manage"
@@ -158,9 +165,6 @@ export default function OrganisasiPage() {
           )}
         </div>
 
-        {loading && (
-          <p className="py-8 text-center text-app-body-muted">Memuat struktur organisasi...</p>
-        )}
         {error && (
           <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-700">
             {error}

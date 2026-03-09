@@ -54,5 +54,4 @@ Thumbs.db
 
 
 # supabase
-# *.sql
-*/scripts
+*.sql

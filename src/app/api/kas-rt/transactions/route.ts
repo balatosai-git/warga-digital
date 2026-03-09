@@ -158,9 +158,10 @@ export async function POST(request: Request) {
         reference: reference?.trim() || null,
         details: detailsValue,
         category: category?.trim() || null,
+        created_by: session.userId,
       })
       .select(
-        "id, title, amount, type, date, reference, details, category"
+        "id, title, amount, type, date, reference, details, category, created_at, created_by"
       )
       .single();
 
@@ -259,6 +260,8 @@ export async function POST(request: Request) {
       amount: Number(data.amount),
       type: data.type,
       date: data.date,
+      created_at: data.created_at,
+      created_by: data.created_by,
       reference: data.reference ?? "",
       details: data.details ?? "",
       category: data.category ?? null,
@@ -293,11 +296,11 @@ export async function GET(request: Request) {
     let query = supabase
       .from("kas_rt_transactions")
       .select(
-        "id, title, amount, type, date, reference, details, category, kas_rt_attachments(file_name, storage_path, mime_type)"
+        "id, title, amount, type, date, created_at, created_by, reference, details, category, created_by_user:users!kas_rt_transactions_created_by_fkey(full_name), kas_rt_attachments(file_name, storage_path, mime_type)"
       )
       .eq("tenant_id", tenantId)
       .eq("community_id", communityId)
-      .order("date", { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (categoryFilter) {
       query = query.ilike("category", `%${categoryFilter}%`);
@@ -344,6 +347,9 @@ export async function GET(request: Request) {
           amount: Number(row.amount),
           type: row.type as "income" | "expense",
           date: row.date as string,
+          created_at: row.created_at as string,
+          created_by: row.created_by as string | null,
+          created_by_full_name: (row.created_by_user?.full_name as string | null) ?? null,
           reference: (row.reference as string | null) ?? "",
           details: (row.details as string | null) ?? "",
           category: (row.category as string | null) ?? null,
