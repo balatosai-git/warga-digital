@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── App design system (use everywhere for consistency) ─────────────────── */
+:root {
+  /* Layout */
+  --app-max-width: 430px;
+  --app-height: 100dvh;
+
+  /* Primary palette (green – CTAs, links, active states) */
+  --color-primary: #43a047;
+  --color-primary-hover: #2e7d32;
+  --color-primary-muted: #d5ead7;
+
+  /* Surfaces */
+  --color-surface: #ffffff;
+  --color-surface-alt: #f2faf3;
+  --color-surface-gradient-start: #7bc67f;
+  --color-surface-gradient-mid: #a2d8a5;
+  --color-surface-gradient-end: #d5ead7;
+
+  /* Typography */
+  --color-title: #1f5d24;
+  --color-body: #3f4b42;
+  --color-body-muted: #6f7d72;
+
+  /* Indicators / progress */
+  --color-indicator-active: #43a047;
+  --color-indicator-inactive: #d5ead7;
+
+  /* Body background gradient (themeable) */
+  --color-bg-gradient-start: #f8fdf9;
+  --color-bg-gradient-end: #f3faf5;
+  --color-input-border: #e5efe7;
+  --color-primary-shadow: rgba(67,160,71,0.75);
+
+  /* Legacy aliases (onboarding; prefer tokens above) */
+  --onboarding-bg: var(--color-surface-alt);
+  --onboarding-card: var(--color-surface);
+  --onboarding-title: var(--color-title);
+  --onboarding-body: var(--color-body);
+  --onboarding-accent: var(--color-primary);
+  --onboarding-accent-dark: var(--color-primary-hover);
+  --onboarding-indicator-active: var(--color-indicator-active);
+  --onboarding-indicator-inactive: var(--color-indicator-inactive);
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: linear-gradient(180deg, var(--color-bg-gradient-start) 0%, var(--color-bg-gradient-end) 100%);
+  color: var(--color-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+a,
+button {
+  transition-property: color, background-color, border-color, box-shadow, opacity,
+    transform;
+  transition-duration: 180ms;
+  transition-timing-function: ease;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 65%, white 35%);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-primary) 18%, white 82%);
+  color: var(--color-title);
+}
+
+/* ─── NextUI Input: clean Apple-style (neutral bg, green focus only) ─────── */
+[data-slot="input-wrapper"] {
+  background-color: #ffffff !important;
+  border: 1px solid var(--color-input-border);
+  border-radius: 14px !important;
+  transition: border-color 180ms ease, box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+[data-slot="input-wrapper"]:has(input:focus),
+[data-slot="input-wrapper"]:has(textarea:focus),
+[data-slot="input-wrapper"][data-focus="true"] {
+  background-color: #ffffff !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, white 84%)
+    !important;
+}
+[data-slot="input-wrapper"][data-focus="true"] input,
+[data-slot="input-wrapper"][data-focus="true"] textarea {
+  outline: none;
+}
+
+/* Hide scrollbar on horizontal strips (keep scroll behavior) */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Auth Login: professional full-page layout (uses theme variables) ─────── */
+.auth-login-page {
+  background: linear-gradient(
+    165deg,
+    var(--color-bg-gradient-start) 0%,
+    var(--color-surface-alt) 35%,
+    var(--color-bg-gradient-end) 70%,
+    var(--color-surface-alt) 100%
+  );
+}
+
+.auth-login-bg {
+  background:
+    radial-gradient(
+      ellipse 80% 50% at 50% -20%,
+      color-mix(in srgb, var(--color-primary) 12%, transparent),
+      transparent
+    ),
+    radial-gradient(
+      circle at 100% 100%,
+      color-mix(in srgb, var(--color-primary) 8%, transparent),
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at 0% 80%,
+      color-mix(in srgb, var(--color-primary) 6%, transparent),
+      transparent 45%
+    );
+}
+
+.auth-login-card {
+  animation: auth-login-card-in 0.4s ease-out;
+}
+
+@keyframes auth-login-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-login-logo {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-login-page:has(form:focus-within) .auth-login-logo,
+.auth-login-logo:hover {
+  transform: scale(1.02);
+  box-shadow: 0 12px 28px -8px color-mix(in srgb, var(--color-primary) 0.35, transparent);
+}
