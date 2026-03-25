@@ -12,7 +12,6 @@ interface LandingHeaderProps {
   /** Balance to show, e.g. "Rp 0" or formatted saldo */
   saldo?: string;
   onNotificationPress?: () => void;
-  onMenuPress?: () => void;
 }
 
 function BellIcon({ className }: { className?: string }) {
@@ -36,27 +35,6 @@ function BellIcon({ className }: { className?: string }) {
   );
 }
 
-function MenuIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M4 6h16" />
-      <path d="M4 12h16" />
-      <path d="M4 18h16" />
-    </svg>
-  );
-}
 
 export function LandingHeader({
   name = "Warga",
@@ -64,7 +42,6 @@ export function LandingHeader({
   blokRumah = "Blok —",
   saldo = "Rp 0",
   onNotificationPress,
-  onMenuPress,
 }: LandingHeaderProps) {
   return (
     <header className="flex shrink-0 items-center justify-between gap-3 bg-app-surface px-4 py-3 shadow-sm">
@@ -84,14 +61,6 @@ export function LandingHeader({
           aria-label="Notifikasi"
         >
           <BellIcon className="h-6 w-6" />
-        </button>
-        <button
-          type="button"
-          onClick={onMenuPress}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-app-body-muted transition-colors hover:bg-app-primary-muted hover:text-app-primary active:opacity-80"
-          aria-label="Menu"
-        >
-          <MenuIcon className="h-6 w-6" />
         </button>
       </div>
     </header>

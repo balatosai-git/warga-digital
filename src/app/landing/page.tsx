@@ -140,7 +140,6 @@ export default function LandingPage() {
         blokRumah={headerProfile?.blokRumah ?? "Blok —"}
         saldo="Rp 0"
         onNotificationPress={() => {}}
-        onMenuPress={() => {}}
       />
 
       <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
