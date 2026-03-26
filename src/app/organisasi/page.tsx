@@ -3,11 +3,19 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChatBubbleLeftRightIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
+import {
+  ChatBubbleLeftRightIcon,
+  PencilSquareIcon,
+} from "@heroicons/react/24/outline";
 import { useAuthStore } from "@/stores/auth-store";
 import { PageLoader, getInitials } from "@/components/ui";
 import { getWhatsAppLink } from "@/lib/organisation-data";
-import type { OrganisationTreeApi, OrganisationMemberApi, OrganisationRoleApi } from "@/lib/organisation-api";
+import { apiFetch } from "@/lib/api-client";
+import type {
+  OrganisationTreeApi,
+  OrganisationMemberApi,
+  OrganisationRoleApi,
+} from "@/lib/organisation-api";
 
 function MemberCard({ member }: { member: OrganisationMemberApi }) {
   const isVacant = member.userId == null || !member.whatsappNumber?.trim();
@@ -17,7 +25,9 @@ function MemberCard({ member }: { member: OrganisationMemberApi }) {
   const showImage = !isVacant && profilePictureUrl && !imgError;
   const cardContent = (
     <>
-      <div className={`relative min-h-0 flex-1 overflow-hidden rounded-t-2xl ${isVacant ? "bg-app-body-muted/10" : "bg-app-surface-alt/60"}`}>
+      <div
+        className={`relative min-h-0 flex-1 overflow-hidden rounded-t-2xl ${isVacant ? "bg-app-body-muted/10" : "bg-app-surface-alt/60"}`}
+      >
         {showImage ? (
           <img
             src={profilePictureUrl!}
@@ -27,14 +37,20 @@ function MemberCard({ member }: { member: OrganisationMemberApi }) {
             onError={() => setImgError(true)}
           />
         ) : (
-          <div className={`flex h-full w-full items-center justify-center font-semibold text-[clamp(0.75rem,4vw,1.25rem)] ${isVacant ? "bg-app-body-muted/20 text-app-body-muted" : "bg-app-primary/15 text-app-primary"}`}>
+          <div
+            className={`flex h-full w-full items-center justify-center font-semibold text-[clamp(0.75rem,4vw,1.25rem)] ${isVacant ? "bg-app-body-muted/20 text-app-body-muted" : "bg-app-primary/15 text-app-primary"}`}
+          >
             <span>{isVacant ? "—" : getInitials(displayName)}</span>
           </div>
         )}
       </div>
       <div className="flex shrink-0 flex-col justify-center truncate border-t border-[var(--color-input-border)] bg-white px-2 py-1.5 text-center">
-        <p className="truncate font-medium text-app-title text-xs leading-tight">{displayName}</p>
-        <p className="truncate text-[10px] leading-tight text-app-body-muted">{isVacant ? "Peran kosong" : member.blockName}</p>
+        <p className="truncate font-medium text-app-title text-xs leading-tight">
+          {displayName}
+        </p>
+        <p className="truncate text-[10px] leading-tight text-app-body-muted">
+          {isVacant ? "Peran kosong" : member.blockName}
+        </p>
         {!isVacant && (
           <span className="mt-0.5 inline-flex items-center justify-center gap-0.5 text-[10px] text-app-primary">
             <WhatsAppIcon className="h-3 w-3" />
@@ -44,12 +60,19 @@ function MemberCard({ member }: { member: OrganisationMemberApi }) {
       </div>
     </>
   );
-  const cardClass = "flex aspect-square min-w-0 flex-col overflow-hidden rounded-2xl border border-[var(--color-input-border)] bg-white shadow-sm transition-shadow hover:shadow-md active:scale-[0.99]";
+  const cardClass =
+    "flex aspect-square min-w-0 flex-col overflow-hidden rounded-2xl border border-[var(--color-input-border)] bg-white shadow-sm transition-shadow hover:shadow-md active:scale-[0.99]";
   if (isVacant) {
     return <div className={cardClass}>{cardContent}</div>;
   }
   return (
-    <Link href={getWhatsAppLink(member.whatsappNumber)} target="_blank" rel="noopener noreferrer" className={cardClass} aria-label={`Hubungi ${displayName} via WhatsApp`}>
+    <Link
+      href={getWhatsAppLink(member.whatsappNumber)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cardClass}
+      aria-label={`Hubungi ${displayName} via WhatsApp`}
+    >
       {cardContent}
     </Link>
   );
@@ -99,7 +122,7 @@ export default function OrganisasiPage() {
 
   useEffect(() => {
     if (!hasMounted || !isAuthenticated) return;
-    fetch("/api/organisation/permissions", { credentials: "include" })
+    apiFetch("/api/organisation/permissions", { credentials: "include" })
       .then((res) => res.json())
       .then((data: { canManageOrganisation?: boolean }) => {
         setCanManageOrganisation(Boolean(data?.canManageOrganisation));
@@ -111,7 +134,7 @@ export default function OrganisasiPage() {
     if (!hasMounted || !isAuthenticated) return;
     setLoading(true);
     setError(null);
-    fetch("/api/organisation", { credentials: "include" })
+    apiFetch("/api/organisation", { credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("Gagal memuat data organisasi");
         return res.json();
@@ -120,7 +143,9 @@ export default function OrganisasiPage() {
         setTree(data);
       })
       .catch((e) => {
-        setError(e instanceof Error ? e.message : "Gagal memuat data organisasi");
+        setError(
+          e instanceof Error ? e.message : "Gagal memuat data organisasi",
+        );
       })
       .finally(() => setLoading(false));
   }, [hasMounted, isAuthenticated]);

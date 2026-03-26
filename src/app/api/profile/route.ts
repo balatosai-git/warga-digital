@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromCookie } from "@/lib/auth/session";
 import { createServerClient } from "@/lib/supabase/server";
+import { DEFAULT_TENANT_ID } from "@/lib/constants/seed-ids";
+
+/** Format IDR amount as "Rp X.XXX" / "Rp X,XJt" / "Rp X,XM" */
+function formatRupiah(amount: number): string {
+  if (amount >= 1_000_000_000) {
+    return `Rp ${(amount / 1_000_000_000).toFixed(1).replace(".", ",")} M`;
+  }
+  if (amount >= 1_000_000) {
+    return `Rp ${(amount / 1_000_000).toFixed(1).replace(".", ",")} Jt`;
+  }
+  return `Rp ${amount.toLocaleString("id-ID")}`;
+}
 
 /** Mask WA number for display (e.g. +62 812-****-5678) */
 function maskWaNumber(wa: string | null): string | null {
@@ -26,7 +38,7 @@ export async function GET() {
     const { data: user, error: userError } = await supabase
       .from("users")
       .select(
-        "id, full_name, username, wa_number, email, date_of_birth, status, created_at, avatar_path, theme_id"
+        "id, full_name, username, wa_number, email, date_of_birth, status, created_at, avatar_path, theme_id",
       )
       .eq("id", session.userId)
       .single();
@@ -34,7 +46,7 @@ export async function GET() {
     if (userError || !user) {
       return NextResponse.json(
         { error: "Profil tidak ditemukan" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -70,30 +82,53 @@ export async function GET() {
     const residences: Residence[] = [];
 
     if (allLinks && allLinks.length > 0) {
-      for (const link of allLinks as { house_id: string; tenant_id: string; is_primary?: boolean }[]) {
+      for (const link of allLinks as {
+        house_id: string;
+        tenant_id: string;
+        is_primary?: boolean;
+      }[]) {
         const houseId = link.house_id;
         const tenantId = link.tenant_id;
         const isPrimary = link.is_primary ?? false;
 
         const [houseRes, membersRes, tenantRes] = await Promise.all([
-          supabase.from("houses").select("blok_rumah, address, name, community_id").eq("id", houseId).single(),
+          supabase
+            .from("houses")
+            .select("blok_rumah, address, name, community_id")
+            .eq("id", houseId)
+            .single(),
           supabase
             .from("user_houses")
-            .select("user_id, relationship, is_primary, users!user_houses_user_id_fkey(full_name, username)")
+            .select(
+              "user_id, relationship, is_primary, users!user_houses_user_id_fkey(full_name, username)",
+            )
             .eq("house_id", houseId)
             .eq("status", "ACTIVE")
             .order("is_primary", { ascending: false }),
-          supabase.from("tenants").select("id, name").eq("id", tenantId).single(),
+          supabase
+            .from("tenants")
+            .select("id, name")
+            .eq("id", tenantId)
+            .single(),
         ]);
 
-        const houseRow = houseRes.data as { blok_rumah: string | null; address: string | null; name: string; community_id?: string } | null;
+        const houseRow = houseRes.data as {
+          blok_rumah: string | null;
+          address: string | null;
+          name: string;
+          community_id?: string;
+        } | null;
         const memberRows = membersRes.data ?? [];
         const communityId = houseRow?.community_id;
         const tenantRow = tenantRes.data as { id: string; name: string } | null;
 
         if (!houseRow || !tenantRow) continue;
 
-        let community: { id: string; code: string; name: string | null } | null = null;
+        let community: {
+          id: string;
+          code: string;
+          name: string | null;
+        } | null = null;
         if (communityId) {
           const { data: communityRow } = await supabase
             .from("communities")
@@ -101,7 +136,11 @@ export async function GET() {
             .eq("id", communityId)
             .single();
           if (communityRow) {
-            community = { id: communityRow.id, code: communityRow.code, name: communityRow.name ?? null };
+            community = {
+              id: communityRow.id,
+              code: communityRow.code,
+              name: communityRow.name ?? null,
+            };
           }
         }
         if (!community) {
@@ -112,18 +151,23 @@ export async function GET() {
           user_id: string;
           relationship: string;
           is_primary?: boolean;
-          users: { full_name: string; username: string | null } | { full_name: string; username: string | null }[] | null;
+          users:
+            | { full_name: string; username: string | null }
+            | { full_name: string; username: string | null }[]
+            | null;
         };
-        const members: HouseMember[] = (memberRows as MemberRow[]).map((row) => {
-          const u = Array.isArray(row.users) ? row.users[0] : row.users;
-          return {
-            userId: row.user_id,
-            fullName: u?.full_name ?? "—",
-            username: u?.username ?? null,
-            relationship: row.relationship,
-            isPrimary: row.is_primary ?? false,
-          };
-        });
+        const members: HouseMember[] = (memberRows as MemberRow[]).map(
+          (row) => {
+            const u = Array.isArray(row.users) ? row.users[0] : row.users;
+            return {
+              userId: row.user_id,
+              fullName: u?.full_name ?? "—",
+              username: u?.username ?? null,
+              relationship: row.relationship,
+              isPrimary: row.is_primary ?? false,
+            };
+          },
+        );
 
         const { data: tenantUserRow } = await supabase
           .from("tenant_users")
@@ -132,7 +176,11 @@ export async function GET() {
           .eq("tenant_id", tenantId)
           .eq("status", "ACTIVE")
           .maybeSingle();
-        let roles: Array<{ id: number; name: string; description: string | null }> = [];
+        let roles: Array<{
+          id: number;
+          name: string;
+          description: string | null;
+        }> = [];
         if (tenantUserRow?.id) {
           const { data: turRows } = await supabase
             .from("tenant_user_roles")
@@ -140,9 +188,21 @@ export async function GET() {
             .eq("tenant_user_id", tenantUserRow.id)
             .is("revoked_at", null);
           if (turRows && turRows.length > 0) {
-            const roleIds = [...new Set((turRows as { role_id: number }[]).map((r) => r.role_id))];
-            const { data: roleRows } = await supabase.from("roles").select("id, name, description").in("id", roleIds);
-            if (roleRows) roles = roleRows.map((r) => ({ id: r.id, name: r.name, description: r.description ?? null }));
+            const roleIds = [
+              ...new Set(
+                (turRows as { role_id: number }[]).map((r) => r.role_id),
+              ),
+            ];
+            const { data: roleRows } = await supabase
+              .from("roles")
+              .select("id, name, description")
+              .in("id", roleIds);
+            if (roleRows)
+              roles = roleRows.map((r) => ({
+                id: r.id,
+                name: r.name,
+                description: r.description ?? null,
+              }));
           }
         }
 
@@ -173,7 +233,13 @@ export async function GET() {
       .eq("relationship", "OWNER")
       .eq("status", "ACTIVE");
 
-    let pendingJoinRequests: Array<{ id: string; houseId: string; requesterFullName: string; blokRumah: string; createdAt: string }> = [];
+    let pendingJoinRequests: Array<{
+      id: string;
+      houseId: string;
+      requesterFullName: string;
+      blokRumah: string;
+      createdAt: string;
+    }> = [];
     if (ownedHouseLinks && ownedHouseLinks.length > 0) {
       const ownedHouseIds = ownedHouseLinks.map((r) => r.house_id);
       const { data: requests } = await supabase
@@ -188,13 +254,19 @@ export async function GET() {
           .from("houses")
           .select("id, blok_rumah")
           .in("id", houseIds);
-        const houseMap = new Map((houses ?? []).map((h) => [h.id, h.blok_rumah ?? "—"]));
-        const requesterIds = [...new Set(requests.map((r) => r.requester_user_id))];
+        const houseMap = new Map(
+          (houses ?? []).map((h) => [h.id, h.blok_rumah ?? "—"]),
+        );
+        const requesterIds = [
+          ...new Set(requests.map((r) => r.requester_user_id)),
+        ];
         const { data: users } = await supabase
           .from("users")
           .select("id, full_name")
           .in("id", requesterIds);
-        const userMap = new Map((users ?? []).map((u) => [u.id, u.full_name ?? "—"]));
+        const userMap = new Map(
+          (users ?? []).map((u) => [u.id, u.full_name ?? "—"]),
+        );
         pendingJoinRequests = requests.map((r) => ({
           id: r.id,
           houseId: r.house_id,
@@ -206,7 +278,11 @@ export async function GET() {
     }
 
     // If user has no house, check for pending join request (requester side)
-    let pendingJoinRequest: { blokRumah: string; ownerFullName: string; status: string } | null = null;
+    let pendingJoinRequest: {
+      blokRumah: string;
+      ownerFullName: string;
+      status: string;
+    } | null = null;
     if (!firstResidence) {
       const { data: myRequest } = await supabase
         .from("house_join_requests")
@@ -253,14 +329,31 @@ export async function GET() {
       .select("badge_id, earned_at")
       .eq("user_id", session.userId)
       .order("earned_at", { ascending: false });
-    const badges: Array<{ id: number; code: string; name: string; description: string | null; icon: string; earnedAt: string }> = [];
+    const badges: Array<{
+      id: number;
+      code: string;
+      name: string;
+      description: string | null;
+      icon: string;
+      earnedAt: string;
+    }> = [];
     if (userBadgeRows && userBadgeRows.length > 0) {
-      const badgeIds = [...new Set((userBadgeRows as { badge_id: number; earned_at: string }[]).map((r) => r.badge_id))];
+      const badgeIds = [
+        ...new Set(
+          (userBadgeRows as { badge_id: number; earned_at: string }[]).map(
+            (r) => r.badge_id,
+          ),
+        ),
+      ];
       const { data: badgeRows } = await supabase
         .from("badges")
         .select("id, code, name, description, icon, sort_order")
         .in("id", badgeIds);
-      const earnedAtMap = new Map((userBadgeRows as { badge_id: number; earned_at: string }[]).map((r) => [r.badge_id, r.earned_at]));
+      const earnedAtMap = new Map(
+        (userBadgeRows as { badge_id: number; earned_at: string }[]).map(
+          (r) => [r.badge_id, r.earned_at],
+        ),
+      );
       if (badgeRows) {
         badgeRows.sort((a, b) => a.sort_order - b.sort_order);
         for (const b of badgeRows) {
@@ -284,6 +377,33 @@ export async function GET() {
 
     const themeId = (user as { theme_id?: string }).theme_id ?? "green";
 
+    /* ── Wallet balance (sum of income − expense from wallet_transactions) ── */
+    const [walletIncomeRes, walletExpenseRes] = await Promise.all([
+      supabase
+        .from("wallet_transactions")
+        .select("amount")
+        .eq("user_id", session.userId)
+        .eq("tenant_id", DEFAULT_TENANT_ID)
+        .eq("type", "income"),
+      supabase
+        .from("wallet_transactions")
+        .select("amount")
+        .eq("user_id", session.userId)
+        .eq("tenant_id", DEFAULT_TENANT_ID)
+        .eq("type", "expense"),
+    ]);
+
+    const sumWallet = (rows: { amount: number }[] | null): number =>
+      (rows ?? []).reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
+
+    const walletIncome = sumWallet(
+      walletIncomeRes.data as { amount: number }[] | null,
+    );
+    const walletExpense = sumWallet(
+      walletExpenseRes.data as { amount: number }[] | null,
+    );
+    const walletBalance = walletIncome - walletExpense;
+
     return NextResponse.json({
       id: user.id,
       fullName: user.full_name,
@@ -303,21 +423,33 @@ export async function GET() {
       residences,
       pendingJoinRequests,
       pendingJoinRequest,
+      walletBalance,
+      walletBalanceFormatted: formatRupiah(Math.max(walletBalance, 0)),
     });
   } catch (err) {
     console.error("[Profile GET] Error:", err);
-    return NextResponse.json(
-      { error: "Gagal memuat profil" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Gagal memuat profil" }, { status: 500 });
   }
 }
 
 /** Valid theme ids for appearance (must match src/lib/themes.ts) */
-const VALID_THEME_IDS = ["green", "blue", "purple", "orange", "teal", "rose"] as const;
+const VALID_THEME_IDS = [
+  "green",
+  "blue",
+  "purple",
+  "orange",
+  "teal",
+  "rose",
+] as const;
 
 /** Allowed fields for profile update (no wa_number, pin_hash, status) */
-const ALLOWED_KEYS = ["full_name", "email", "date_of_birth", "username", "theme_id"] as const;
+const ALLOWED_KEYS = [
+  "full_name",
+  "email",
+  "date_of_birth",
+  "username",
+  "theme_id",
+] as const;
 
 /**
  * PATCH /api/profile
@@ -332,10 +464,7 @@ export async function PATCH(request: NextRequest) {
 
     const body = await request.json();
     if (!body || typeof body !== "object") {
-      return NextResponse.json(
-        { error: "Data tidak valid" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Data tidak valid" }, { status: 400 });
     }
 
     const updates: Record<string, unknown> = {};
@@ -350,13 +479,13 @@ export async function PATCH(request: NextRequest) {
             if (trimmed.length < 3 || trimmed.length > 30) {
               return NextResponse.json(
                 { error: "Username harus 3–30 karakter" },
-                { status: 400 }
+                { status: 400 },
               );
             }
             if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
               return NextResponse.json(
                 { error: "Username hanya huruf, angka, dan underscore" },
-                { status: 400 }
+                { status: 400 },
               );
             }
             updates[key] = trimmed;
@@ -364,25 +493,29 @@ export async function PATCH(request: NextRequest) {
         } else if (key === "theme_id") {
           if (typeof v !== "string" || !v.trim()) {
             updates[key] = "green";
-          } else if (VALID_THEME_IDS.includes(v.trim() as (typeof VALID_THEME_IDS)[number])) {
+          } else if (
+            VALID_THEME_IDS.includes(
+              v.trim() as (typeof VALID_THEME_IDS)[number],
+            )
+          ) {
             updates[key] = v.trim();
           } else {
             return NextResponse.json(
               { error: "Tema tidak valid" },
-              { status: 400 }
+              { status: 400 },
             );
           }
         } else if (key === "full_name") {
           if (typeof v !== "string" || !v.trim()) {
             return NextResponse.json(
               { error: "Nama lengkap wajib diisi" },
-              { status: 400 }
+              { status: 400 },
             );
           }
           if (v.trim().length < 2) {
             return NextResponse.json(
               { error: "Nama minimal 2 karakter" },
-              { status: 400 }
+              { status: 400 },
             );
           }
           updates.full_name = v.trim();
@@ -399,7 +532,7 @@ export async function PATCH(request: NextRequest) {
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
         { error: "Tidak ada data yang diubah" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -411,20 +544,22 @@ export async function PATCH(request: NextRequest) {
       .from("users")
       .update(updates)
       .eq("id", session.userId)
-      .select("id, full_name, username, email, date_of_birth, theme_id, updated_at")
+      .select(
+        "id, full_name, username, email, date_of_birth, theme_id, updated_at",
+      )
       .single();
 
     if (error) {
       if (error.code === "23505") {
         return NextResponse.json(
           { error: "Username atau email sudah dipakai" },
-          { status: 409 }
+          { status: 409 },
         );
       }
       console.error("[Profile PATCH] Supabase error:", error);
       return NextResponse.json(
         { error: "Gagal menyimpan profil" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -444,7 +579,7 @@ export async function PATCH(request: NextRequest) {
     console.error("[Profile PATCH] Error:", err);
     return NextResponse.json(
       { error: "Gagal menyimpan profil" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

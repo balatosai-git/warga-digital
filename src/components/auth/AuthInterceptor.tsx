@@ -3,51 +3,96 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
+import {
+  AUTH_UNAUTHORIZED_EVENT,
+  type AuthUnauthorizedDetail,
+} from "@/lib/api-client";
 
 /**
- * A global interceptor for fetch calls that automatically redirects to the login page
- * when receiving a 401 (Unauthorized) response.
+ * AuthInterceptor
  *
- * It ignores 401s from the login/register API endpoints so that error messages
- * (like "PIN salah") can still be handled by the form component itself.
+ * Listens for the `auth:unauthorized` CustomEvent dispatched by `apiFetch`
+ * (src/lib/api-client.ts) whenever any API call returns HTTP 401.
+ *
+ * On receiving the event it:
+ *  1. Clears the local auth state (Zustand + header-profile cookie).
+ *  2. Redirects to /auth/login with a `redirect` param so the user lands back
+ *     on the page they were trying to access after re-authenticating.
+ *
+ * WHY NOT window.fetch MONKEY-PATCHING?
+ * ──────────────────────────────────────
+ * The previous implementation overwrote `window.fetch` globally. That approach
+ * is fragile:
+ *  • Double-mount in React 18 Strict Mode patches fetch twice and the
+ *    cleanup only removes the outermost wrapper, leaving a dangling intercept.
+ *  • It conflicts with Suspense and concurrent rendering because React may
+ *    invoke renders before the effect runs.
+ *  • It makes the fetch call-stack opaque and harder to debug in DevTools.
+ *
+ * The CustomEvent pattern is:
+ *  • Zero global mutation — the native `fetch` is never touched.
+ *  • Easy to reason about: apiFetch dispatches → AuthInterceptor handles.
+ *  • Safe to mount/unmount multiple times (addEventListener is idempotent
+ *    when the same handler reference is used, and cleanup is reliable).
+ *
+ * IGNORED URLS
+ * ────────────
+ * Login and auth-check endpoints deliberately return 401 as part of their
+ * normal flow (e.g. "PIN salah", "belum login"). Reacting to those 401s
+ * would redirect the user away from the login page mid-submission.
+ * We suppress the redirect for any URL that includes these prefixes.
  */
+
+/** URL substrings whose 401 responses should NOT trigger a redirect. */
+const IGNORED_URL_PATTERNS = [
+  "/api/auth/login",
+  "/api/auth/check-login",
+  "/api/auth/register",
+  "/api/auth/otp",
+] as const;
+
+function isIgnoredUrl(url: string): boolean {
+  return IGNORED_URL_PATTERNS.some((pattern) => url.includes(pattern));
+}
+
 export function AuthInterceptor() {
   const router = useRouter();
   const pathname = usePathname();
   const clearUser = useAuthStore((s) => s.clearUser);
 
   useEffect(() => {
-    // Save the original fetch
-    const originalFetch = window.fetch;
+    function handleUnauthorized(
+      event: CustomEvent<AuthUnauthorizedDetail>,
+    ): void {
+      const { url } = event.detail;
 
-    // Monkey-patch window.fetch
-    window.fetch = async (...args) => {
-      const response = await originalFetch(...args);
+      // Don't redirect if we're already on the login page (avoid loops).
+      if (pathname === "/auth/login") return;
 
-      // Only handle 401 if we're not on the login page and it's not a login/auth check request
-      // (to prevent infinite loops or blocking validation messages)
-      const isUnauthorized = response.status === 401;
-      const url = typeof args[0] === "string" ? args[0] : args[0] instanceof URL ? args[0].href : args[0].url;
-      
-      const isAuthApi = url.includes("/api/auth/login") || url.includes("/api/auth/check-login");
-      const isLoginPage = pathname === "/auth/login";
+      // Don't redirect for auth endpoints that legitimately return 401.
+      if (isIgnoredUrl(url)) return;
 
-      if (isUnauthorized && !isAuthApi && !isLoginPage) {
-        // Clear local auth state
-        clearUser();
-        
-        // Redirect to login page
-        router.push(`/auth/login?redirect=${encodeURIComponent(pathname)}`);
-      }
+      // Clear local session state so the app doesn't think the user is still
+      // logged in after the redirect.
+      clearUser();
 
-      return response;
-    };
+      // Preserve the current path so the user is sent back here after login.
+      router.push(`/auth/login?redirect=${encodeURIComponent(pathname)}`);
+    }
 
-    // Cleanup on unmount (though this component usually lives as long as the app)
+    window.addEventListener(
+      AUTH_UNAUTHORIZED_EVENT,
+      handleUnauthorized as EventListener,
+    );
+
     return () => {
-      window.fetch = originalFetch;
+      window.removeEventListener(
+        AUTH_UNAUTHORIZED_EVENT,
+        handleUnauthorized as EventListener,
+      );
     };
   }, [router, pathname, clearUser]);
 
+  // This component renders nothing — it exists purely for its side-effect.
   return null;
 }

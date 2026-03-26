@@ -18,6 +18,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { useAuthStore } from "@/stores/auth-store";
 import { PageLoader } from "@/components/ui";
+import { apiFetch } from "@/lib/api-client";
 
 type NotificationType =
   | "SYSTEM"
@@ -131,11 +132,11 @@ function getGroupLabel(value: Date): string {
   const startValue = new Date(
     value.getFullYear(),
     value.getMonth(),
-    value.getDate()
+    value.getDate(),
   );
 
   const daysDiff = Math.floor(
-    (startNow.getTime() - startValue.getTime()) / (1000 * 60 * 60 * 24)
+    (startNow.getTime() - startValue.getTime()) / (1000 * 60 * 60 * 24),
   );
 
   if (daysDiff <= 0) return "Terbaru";
@@ -165,7 +166,9 @@ function formatRelativeTime(value: Date): string {
   });
 }
 
-function buildGroupsFromApi(notifications: ApiNotification[]): NotificationGroup[] {
+function buildGroupsFromApi(
+  notifications: ApiNotification[],
+): NotificationGroup[] {
   const grouped = new Map<string, NotificationItem[]>();
 
   for (const row of notifications) {
@@ -305,7 +308,7 @@ export default function NotifikasiPage() {
         setErrorMessage(null);
         setIsLoading(true);
 
-        const response = await fetch("/api/notifications", {
+        const response = await apiFetch("/api/notifications", {
           credentials: "include",
         });
 
@@ -328,7 +331,7 @@ export default function NotifikasiPage() {
         setGroups(buildGroupsFromApi(payload.notifications ?? []));
       } catch (error) {
         setErrorMessage(
-          error instanceof Error ? error.message : "Gagal memuat notifikasi"
+          error instanceof Error ? error.message : "Gagal memuat notifikasi",
         );
       } finally {
         setIsLoading(false);
@@ -347,44 +350,66 @@ export default function NotifikasiPage() {
     .filter((item) => item.isUnread).length;
 
   async function markAllRead() {
+    // Snapshot pre-update state so we can roll back on failure.
+    const snapshot = groups;
+
     setGroups((prev) =>
       prev.map((group) => ({
         ...group,
         items: group.items.map((item) => ({ ...item, isUnread: false })),
-      }))
+      })),
     );
 
     try {
-      await fetch("/api/notifications", {
+      const res = await apiFetch("/api/notifications", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ markAllRead: true }),
       });
+      if (!res.ok) {
+        // Roll back the optimistic update.
+        setGroups(snapshot);
+        setErrorMessage("Gagal menandai semua notifikasi sebagai dibaca");
+      }
     } catch {
+      // Roll back the optimistic update.
+      setGroups(snapshot);
       setErrorMessage("Gagal menandai semua notifikasi sebagai dibaca");
     }
   }
 
   async function markOneRead(id: string, actionUrl: string | null) {
+    // Snapshot pre-update state so we can roll back on failure.
+    const snapshot = groups;
+
     setGroups((prev) =>
       prev.map((group) => ({
         ...group,
         items: group.items.map((item) =>
-          item.id === id ? { ...item, isUnread: false } : item
+          item.id === id ? { ...item, isUnread: false } : item,
         ),
-      }))
+      })),
     );
 
     try {
-      await fetch("/api/notifications", {
+      const res = await apiFetch("/api/notifications", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ notificationId: id }),
       });
+      if (!res.ok) {
+        // Roll back the optimistic update.
+        setGroups(snapshot);
+        setErrorMessage("Gagal menandai notifikasi");
+        return;
+      }
     } catch {
+      // Roll back the optimistic update.
+      setGroups(snapshot);
       setErrorMessage("Gagal menandai notifikasi");
+      return;
     }
 
     if (actionUrl) {
@@ -438,7 +463,10 @@ export default function NotifikasiPage() {
         )}
 
         {groups.map((group, groupIndex) => (
-          <section key={group.label} aria-labelledby={`notif-group-${groupIndex}`}>
+          <section
+            key={group.label}
+            aria-labelledby={`notif-group-${groupIndex}`}
+          >
             <div className="flex items-center gap-2 mb-3 px-1">
               <span
                 id={`notif-group-${groupIndex}`}

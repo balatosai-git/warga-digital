@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowDownTrayIcon, FunnelIcon } from "@heroicons/react/24/outline";
 import { useAuthStore } from "@/stores/auth-store";
 import { PageLoader } from "@/components/ui";
+import { apiFetch } from "@/lib/api-client";
 
 type TransactionType = "income" | "expense";
 
@@ -104,9 +105,13 @@ export default function KasRTPage() {
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [attachmentLabel, setAttachmentLabel] = useState("Belum ada file dipilih");
+  const [attachmentLabel, setAttachmentLabel] = useState(
+    "Belum ada file dipilih",
+  );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [form, setForm] = useState<KasRtFormState>(() => getDefaultKasRtForm(now));
+  const [form, setForm] = useState<KasRtFormState>(() =>
+    getDefaultKasRtForm(now),
+  );
   /** Server-derived: only true when user has role permission; used to render Catat Transaksi. */
   const [canSubmitTransaction, setCanSubmitTransaction] = useState(false);
   /** True until the first transaction load completes (used for full-page loading spinner). */
@@ -147,15 +152,25 @@ export default function KasRTPage() {
     const prevMonthIndex = prevMonthDate.getMonth();
     const prevYear = prevMonthDate.getFullYear();
 
-    const thisMonthNet = transactions.filter((tx) => {
-      const d = new Date(tx.date);
-      return d.getMonth() === thisMonthIndex && d.getFullYear() === thisYear;
-    }).reduce((sum, tx) => (tx.type === "income" ? sum + tx.amount : sum - tx.amount), 0);
+    const thisMonthNet = transactions
+      .filter((tx) => {
+        const d = new Date(tx.date);
+        return d.getMonth() === thisMonthIndex && d.getFullYear() === thisYear;
+      })
+      .reduce(
+        (sum, tx) => (tx.type === "income" ? sum + tx.amount : sum - tx.amount),
+        0,
+      );
 
-    const prevMonthNet = transactions.filter((tx) => {
-      const d = new Date(tx.date);
-      return d.getMonth() === prevMonthIndex && d.getFullYear() === prevYear;
-    }).reduce((sum, tx) => (tx.type === "income" ? sum + tx.amount : sum - tx.amount), 0);
+    const prevMonthNet = transactions
+      .filter((tx) => {
+        const d = new Date(tx.date);
+        return d.getMonth() === prevMonthIndex && d.getFullYear() === prevYear;
+      })
+      .reduce(
+        (sum, tx) => (tx.type === "income" ? sum + tx.amount : sum - tx.amount),
+        0,
+      );
 
     const deltaFromPrevious = thisMonthNet - prevMonthNet;
     return { balance, thisMonthNet, deltaFromPrevious };
@@ -165,7 +180,14 @@ export default function KasRTPage() {
     return transactions
       .filter((tx) => {
         if (typeFilter !== "all" && tx.type !== typeFilter) return false;
-        if (categoryFilter.trim() && (!tx.category || !tx.category.toLowerCase().includes(categoryFilter.trim().toLowerCase()))) return false;
+        if (
+          categoryFilter.trim() &&
+          (!tx.category ||
+            !tx.category
+              .toLowerCase()
+              .includes(categoryFilter.trim().toLowerCase()))
+        )
+          return false;
         if (startDate && tx.date < startDate) return false;
         if (endDate && tx.date > endDate) return false;
         return true;
@@ -241,7 +263,9 @@ export default function KasRTPage() {
         params.set("block", downloadBlock.trim());
       }
 
-      const response = await fetch(`/api/kas-rt/transactions/report?${params.toString()}`);
+      const response = await fetch(
+        `/api/kas-rt/transactions/report?${params.toString()}`,
+      );
       if (!response.ok) {
         throw new Error("Gagal mengunduh laporan kas RT.");
       }
@@ -265,7 +289,7 @@ export default function KasRTPage() {
       setDownloadError(
         error instanceof Error
           ? error.message
-          : "Terjadi kesalahan saat mengunduh laporan. Coba lagi nanti."
+          : "Terjadi kesalahan saat mengunduh laporan. Coba lagi nanti.",
       );
     } finally {
       setIsDownloading(false);
@@ -278,7 +302,7 @@ export default function KasRTPage() {
 
   useEffect(() => {
     if (!hasMounted || !isAuthenticated) return;
-    fetch("/api/kas-rt/permissions", { credentials: "include" })
+    apiFetch("/api/kas-rt/permissions", { credentials: "include" })
       .then((res) => res.json())
       .then((data: { canSubmitTransaction?: boolean }) => {
         setCanSubmitTransaction(Boolean(data?.canSubmitTransaction));
@@ -329,11 +353,16 @@ export default function KasRTPage() {
     setIsFormOpen(false);
   };
 
-  const updateFormField = <K extends keyof KasRtFormState>(key: K, value: KasRtFormState[K]) => {
+  const updateFormField = <K extends keyof KasRtFormState>(
+    key: K,
+    value: KasRtFormState[K],
+  ) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSubmit: React.FormEventHandler<HTMLFormElement> = async (event) => {
+  const handleSubmit: React.FormEventHandler<HTMLFormElement> = async (
+    event,
+  ) => {
     event.preventDefault();
     if (!isFormValid || isSubmitting) return;
 
@@ -365,7 +394,7 @@ export default function KasRTPage() {
         });
       }
 
-      const response = await fetch("/api/kas-rt/transactions", {
+      const response = await apiFetch("/api/kas-rt/transactions", {
         method: "POST",
         body: formData,
       });
@@ -424,7 +453,11 @@ export default function KasRTPage() {
           style={{ height: `${Math.max(32, pullDistance)}px` }}
           aria-live="polite"
         >
-          {isRefreshing ? "Menyegarkan transaksi..." : pullDistance > 48 ? "Lepaskan untuk refresh" : "Tarik untuk refresh"}
+          {isRefreshing
+            ? "Menyegarkan transaksi..."
+            : pullDistance > 48
+              ? "Lepaskan untuk refresh"
+              : "Tarik untuk refresh"}
         </div>
 
         <section className="rounded-3xl bg-emerald-600 p-5 text-white shadow-[0_20px_40px_-24px_rgba(16,24,40,0.65)]">
@@ -435,7 +468,8 @@ export default function KasRTPage() {
             {formatRupiah(totals.balance)}
           </h1>
           <p className="mt-2 text-sm text-emerald-50/95">
-            Periode {now.toLocaleString("id-ID", { month: "long", year: "numeric" })}
+            Periode{" "}
+            {now.toLocaleString("id-ID", { month: "long", year: "numeric" })}
           </p>
           <div className="mt-4 rounded-2xl bg-white/95 px-4 py-3 text-emerald-950 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.06em] text-app-body-muted">
@@ -450,7 +484,8 @@ export default function KasRTPage() {
               {formatRupiah(Math.abs(totals.thisMonthNet))}
             </p>
             <p className="mt-1 text-xs text-app-body-muted">
-              Perbandingan dari bulan lalu: {totals.deltaFromPrevious >= 0 ? "+" : "-"}
+              Perbandingan dari bulan lalu:{" "}
+              {totals.deltaFromPrevious >= 0 ? "+" : "-"}
               {formatRupiah(Math.abs(totals.deltaFromPrevious))}
             </p>
           </div>
@@ -463,7 +498,9 @@ export default function KasRTPage() {
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/95 text-emerald-800 shadow-sm transition hover:bg-white active:scale-[0.98]"
                 aria-expanded={isFilterOpen}
                 aria-controls="transaction-filter-panel"
-                aria-label={isFilterOpen ? "Tutup filter" : "Buka filter transaksi"}
+                aria-label={
+                  isFilterOpen ? "Tutup filter" : "Buka filter transaksi"
+                }
               >
                 <FunnelIcon className="h-5 w-5" aria-hidden />
               </button>
@@ -504,7 +541,9 @@ export default function KasRTPage() {
               Jenis transaksi
               <select
                 value={typeFilter}
-                onChange={(event) => setTypeFilter(event.target.value as "all" | TransactionType)}
+                onChange={(event) =>
+                  setTypeFilter(event.target.value as "all" | TransactionType)
+                }
                 className="mt-1 w-full rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-2 text-sm text-app-body focus:border-emerald-400 focus:outline-none"
               >
                 <option value="all">Semua transaksi</option>
@@ -549,10 +588,16 @@ export default function KasRTPage() {
 
         <p className="mt-3 text-xs text-app-body-muted">
           Terakhir diperbarui:{" "}
-          {refreshedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+          {refreshedAt.toLocaleTimeString("id-ID", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </p>
 
-        <section className="mt-4 space-y-3" aria-label="Daftar transaksi kas RT">
+        <section
+          className="mt-4 space-y-3"
+          aria-label="Daftar transaksi kas RT"
+        >
           {filteredTransactions.length === 0 ? (
             <div className="rounded-2xl bg-app-surface p-5 text-center text-sm text-app-body-muted shadow-sm">
               Tidak ada transaksi untuk filter ini.
@@ -567,34 +612,55 @@ export default function KasRTPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-bold text-app-title">{tx.title}</h3>
+                      <h3 className="text-sm font-bold text-app-title">
+                        {tx.title}
+                      </h3>
                       {tx.details && (
-                        <p className="mt-1 text-sm text-app-body line-clamp-2">{tx.details}</p>
+                        <p className="mt-1 text-sm text-app-body line-clamp-2">
+                          {tx.details}
+                        </p>
                       )}
                     </div>
-                    <p className={`shrink-0 text-sm font-bold ${isIncome ? "text-emerald-700" : "text-red-600"}`}>
+                    <p
+                      className={`shrink-0 text-sm font-bold ${isIncome ? "text-emerald-700" : "text-red-600"}`}
+                    >
                       {isIncome ? "+" : "-"}
                       {formatRupiah(tx.amount)}
                     </p>
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-app-body-muted">
-                    <span>{new Date(tx.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</span>
+                    <span>
+                      {new Date(tx.date).toLocaleDateString("id-ID", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </span>
                     {tx.reference && (
                       <>
-                        <span className="inline-block h-1 w-1 rounded-full bg-emerald-300" aria-hidden />
+                        <span
+                          className="inline-block h-1 w-1 rounded-full bg-emerald-300"
+                          aria-hidden
+                        />
                         <span>Blok {tx.reference}</span>
                       </>
                     )}
                     {tx.category && (
                       <>
-                        <span className="inline-block h-1 w-1 rounded-full bg-emerald-300" aria-hidden />
+                        <span
+                          className="inline-block h-1 w-1 rounded-full bg-emerald-300"
+                          aria-hidden
+                        />
                         <span>{tx.category}</span>
                       </>
                     )}
                     {tx.created_by_full_name && (
                       <>
-                        <span className="inline-block h-1 w-1 rounded-full bg-emerald-300" aria-hidden />
+                        <span
+                          className="inline-block h-1 w-1 rounded-full bg-emerald-300"
+                          aria-hidden
+                        />
                         <span>Dicatat oleh: {tx.created_by_full_name}</span>
                       </>
                     )}
@@ -672,11 +738,15 @@ export default function KasRTPage() {
           >
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <h2 id="kas-rt-download-title" className="text-base font-bold text-app-title">
+                <h2
+                  id="kas-rt-download-title"
+                  className="text-base font-bold text-app-title"
+                >
                   Unduh laporan kas RT
                 </h2>
                 <p className="mt-1 text-xs text-app-body-muted">
-                  Pilih rentang tanggal dan filter opsional sebelum mengunduh laporan.
+                  Pilih rentang tanggal dan filter opsional sebelum mengunduh
+                  laporan.
                 </p>
               </div>
               <button
@@ -696,7 +766,9 @@ export default function KasRTPage() {
                   <input
                     type="date"
                     value={downloadStartDate}
-                    onChange={(event) => setDownloadStartDate(event.target.value)}
+                    onChange={(event) =>
+                      setDownloadStartDate(event.target.value)
+                    }
                     className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-app-body focus:border-emerald-400 focus:outline-none focus-visible:outline-none"
                   />
                 </label>
@@ -740,7 +812,9 @@ export default function KasRTPage() {
               <div className="mt-2 flex items-center justify-between gap-2 border-t border-emerald-100/60 pt-3">
                 <button
                   type="button"
-                  onClick={() => !isDownloading && setIsDownloadModalOpen(false)}
+                  onClick={() =>
+                    !isDownloading && setIsDownloadModalOpen(false)
+                  }
                   className="rounded-2xl px-4 py-2 text-xs font-semibold text-app-body-muted disabled:opacity-50"
                   disabled={isDownloading}
                 >
@@ -773,7 +847,10 @@ export default function KasRTPage() {
             aria-labelledby="kas-rt-form-title"
           >
             <div className="mb-2 flex items-center justify-between gap-2">
-              <h2 id="kas-rt-form-title" className="text-base font-bold text-app-title">
+              <h2
+                id="kas-rt-form-title"
+                className="text-base font-bold text-app-title"
+              >
                 Transaksi Kas RT
               </h2>
               <button
@@ -790,10 +867,7 @@ export default function KasRTPage() {
               </button>
             </div>
 
-            <form
-              className="space-y-3"
-              onSubmit={(e) => e.preventDefault()}
-            >
+            <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
               {/* Step indicator */}
               <div className="flex gap-2">
                 {([1, 2, 3] as const).map((step) => (
@@ -827,33 +901,37 @@ export default function KasRTPage() {
               {formStep === 1 && (
                 <div className="space-y-4 pt-1">
                   <div className="space-y-1">
-                    <p className="text-xs font-medium text-app-body">Jenis transaksi</p>
+                    <p className="text-xs font-medium text-app-body">
+                      Jenis transaksi
+                    </p>
                     <div
                       className={`inline-flex rounded-2xl p-1 ${
                         isIncomeForm ? "bg-emerald-50" : "bg-red-50"
                       }`}
                     >
-                      {(["income", "expense"] as TransactionType[]).map((value) => {
-                        const active = form.type === value;
-                        const activeClasses =
-                          value === "income"
-                            ? active
-                              ? "bg-emerald-600 text-white shadow-sm"
-                              : "bg-transparent text-emerald-800"
-                            : active
-                              ? "bg-red-600 text-white shadow-sm"
-                              : "bg-transparent text-red-800";
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => updateFormField("type", value)}
-                            className={`min-w-[4.5rem] rounded-2xl px-3 py-1 text-xs font-semibold transition ${activeClasses}`}
-                          >
-                            {value === "income" ? "Pemasukan" : "Pengeluaran"}
-                          </button>
-                        );
-                      })}
+                      {(["income", "expense"] as TransactionType[]).map(
+                        (value) => {
+                          const active = form.type === value;
+                          const activeClasses =
+                            value === "income"
+                              ? active
+                                ? "bg-emerald-600 text-white shadow-sm"
+                                : "bg-transparent text-emerald-800"
+                              : active
+                                ? "bg-red-600 text-white shadow-sm"
+                                : "bg-transparent text-red-800";
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => updateFormField("type", value)}
+                              className={`min-w-[4.5rem] rounded-2xl px-3 py-1 text-xs font-semibold transition ${activeClasses}`}
+                            >
+                              {value === "income" ? "Pemasukan" : "Pengeluaran"}
+                            </button>
+                          );
+                        },
+                      )}
                     </div>
                   </div>
                   <label className="block text-xs font-medium text-app-body">
@@ -861,7 +939,9 @@ export default function KasRTPage() {
                     <input
                       type="text"
                       value={form.category}
-                      onChange={(e) => updateFormField("category", e.target.value)}
+                      onChange={(e) =>
+                        updateFormField("category", e.target.value)
+                      }
                       placeholder="Contoh: Iuran, Operasional, Sumbangan"
                       className={`mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-app-body focus:outline-none focus-visible:outline-none ${
                         isIncomeForm
@@ -885,12 +965,19 @@ export default function KasRTPage() {
                           : "border-red-200 focus-within:border-red-400"
                       }`}
                     >
-                      <span className="text-xs font-semibold text-app-body-muted">Rp</span>
+                      <span className="text-xs font-semibold text-app-body-muted">
+                        Rp
+                      </span>
                       <input
                         type="text"
                         inputMode="numeric"
                         value={formatAmountDisplay(form.amount)}
-                        onChange={(e) => updateFormField("amount", parseAmountInput(e.target.value))}
+                        onChange={(e) =>
+                          updateFormField(
+                            "amount",
+                            parseAmountInput(e.target.value),
+                          )
+                        }
                         className="w-full border-none bg-transparent text-sm text-app-body outline-none focus:ring-0 focus-visible:outline-none"
                         placeholder="0"
                       />
@@ -914,7 +1001,9 @@ export default function KasRTPage() {
                     <input
                       type="text"
                       value={form.reference}
-                      onChange={(e) => updateFormField("reference", e.target.value)}
+                      onChange={(e) =>
+                        updateFormField("reference", e.target.value)
+                      }
                       placeholder="Contoh: N2"
                       maxLength={20}
                       className={`mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-app-body focus:outline-none focus-visible:outline-none ${
@@ -948,7 +1037,9 @@ export default function KasRTPage() {
                     Deskripsi
                     <textarea
                       value={form.details}
-                      onChange={(e) => updateFormField("details", e.target.value)}
+                      onChange={(e) =>
+                        updateFormField("details", e.target.value)
+                      }
                       rows={3}
                       placeholder="Catatan, rincian biaya, dll."
                       className={`mt-1 w-full resize-none rounded-xl border bg-white px-3 py-2 text-sm text-app-body focus:outline-none focus-visible:outline-none ${
@@ -959,7 +1050,9 @@ export default function KasRTPage() {
                     />
                   </label>
                   <div className="space-y-1">
-                    <p className="text-xs font-medium text-app-body">Lampiran</p>
+                    <p className="text-xs font-medium text-app-body">
+                      Lampiran
+                    </p>
                     <div className="flex flex-wrap items-center gap-2">
                       <input
                         ref={fileInputRef}
@@ -967,9 +1060,12 @@ export default function KasRTPage() {
                         multiple
                         onChange={(e) => {
                           const files = e.target.files;
-                          if (!files?.length) setAttachmentLabel("Belum ada file dipilih");
-                          else if (files.length === 1) setAttachmentLabel(files[0].name);
-                          else setAttachmentLabel(`${files.length} file dipilih`);
+                          if (!files?.length)
+                            setAttachmentLabel("Belum ada file dipilih");
+                          else if (files.length === 1)
+                            setAttachmentLabel(files[0].name);
+                          else
+                            setAttachmentLabel(`${files.length} file dipilih`);
                         }}
                         className="absolute h-0 w-0 opacity-0"
                         id="kas-rt-attachment-input"
@@ -984,7 +1080,9 @@ export default function KasRTPage() {
                       >
                         Pilih file
                       </label>
-                      <span className="text-xs text-app-body-muted">{attachmentLabel}</span>
+                      <span className="text-xs text-app-body-muted">
+                        {attachmentLabel}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1050,7 +1148,9 @@ export default function KasRTPage() {
                     disabled={!isFormValid || isSubmitting}
                     onClick={(e) => {
                       e.preventDefault();
-                      handleSubmit(e as unknown as React.FormEvent<HTMLFormElement>);
+                      handleSubmit(
+                        e as unknown as React.FormEvent<HTMLFormElement>,
+                      );
                     }}
                     className={`rounded-2xl px-4 py-2 text-xs font-semibold text-white shadow-sm transition ${
                       !isFormValid || isSubmitting
@@ -1081,8 +1181,7 @@ export default function KasRTPage() {
               onClick={() => setSuccessMessage(null)}
               className="ml-1 rounded-full p-1 text-emerald-50/80 transition hover:bg-emerald-500/40 hover:text-white"
             >
-              <span className="sr-only">Tutup notifikasi</span>
-              ✕
+              <span className="sr-only">Tutup notifikasi</span>✕
             </button>
           </div>
         </div>

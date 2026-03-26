@@ -3,10 +3,16 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@nextui-org/react";
-import { PrimaryButton, SecondaryButton, PageLoader, Avatar } from "@/components/ui";
+import {
+  PrimaryButton,
+  SecondaryButton,
+  PageLoader,
+  Avatar,
+} from "@/components/ui";
 import { OtpInput } from "@/components/auth/otp-input";
 import { useAuthStore } from "@/stores/auth-store";
 import { useAppearanceStore } from "@/stores/appearance-store";
+import { apiFetch } from "@/lib/api-client";
 import { THEMES, getTheme } from "@/lib/themes";
 import {
   setHeaderProfileCookie,
@@ -168,7 +174,9 @@ export default function ProfilePage() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // House join request respond
-  const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
+  const [respondingRequestId, setRespondingRequestId] = useState<string | null>(
+    null,
+  );
   const [respondError, setRespondError] = useState<string | null>(null);
 
   // Family management (kepala keluarga) — focused edit view
@@ -179,9 +187,13 @@ export default function ProfilePage() {
   const [addMemberWaNumber, setAddMemberWaNumber] = useState("");
   const [addMemberError, setAddMemberError] = useState<string | null>(null);
   const [addMemberLoading, setAddMemberLoading] = useState(false);
-  const [transferLoadingId, setTransferLoadingId] = useState<string | null>(null);
+  const [transferLoadingId, setTransferLoadingId] = useState<string | null>(
+    null,
+  );
   const [removeLoadingId, setRemoveLoadingId] = useState<string | null>(null);
-  const [familyActionError, setFamilyActionError] = useState<string | null>(null);
+  const [familyActionError, setFamilyActionError] = useState<string | null>(
+    null,
+  );
   const [selectedResidenceIndex, setSelectedResidenceIndex] = useState(0);
 
   useEffect(() => {
@@ -198,7 +210,7 @@ export default function ProfilePage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/profile");
+        const res = await apiFetch("/api/profile");
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           if (res.status === 401) {
@@ -222,7 +234,7 @@ export default function ProfilePage() {
         const blok =
           house?.blok_rumah && house?.name
             ? `Blok — ${house.blok_rumah}`
-            : house?.blok_rumah ?? "Blok —";
+            : (house?.blok_rumah ?? "Blok —");
         setHeaderProfileCookie({
           name: data.fullName ?? "Warga",
           profilePictureUrl: data.profilePictureUrl ?? null,
@@ -238,7 +250,7 @@ export default function ProfilePage() {
   }, [hasMounted, isAuthenticated, router, clearUser]);
 
   const refreshProfile = async () => {
-    const profileRes = await fetch("/api/profile");
+    const profileRes = await apiFetch("/api/profile");
     if (profileRes.ok) {
       const profileData = await profileRes.json();
       setProfile(profileData);
@@ -252,7 +264,7 @@ export default function ProfilePage() {
       const blok =
         house?.blok_rumah && house?.name
           ? `Blok — ${house.blok_rumah}`
-          : house?.blok_rumah ?? "Blok —";
+          : (house?.blok_rumah ?? "Blok —");
       setHeaderProfileCookie({
         name: profileData.fullName ?? "Warga",
         profilePictureUrl: profileData.profilePictureUrl ?? null,
@@ -261,11 +273,14 @@ export default function ProfilePage() {
     }
   };
 
-  const handleRespondToJoinRequest = async (requestId: string, action: "approve" | "reject") => {
+  const handleRespondToJoinRequest = async (
+    requestId: string,
+    action: "approve" | "reject",
+  ) => {
     setRespondError(null);
     setRespondingRequestId(requestId);
     try {
-      const res = await fetch("/api/house-join-requests/respond", {
+      const res = await apiFetch("/api/house-join-requests/respond", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId, action }),
@@ -297,7 +312,9 @@ export default function ProfilePage() {
       : null;
   const currentHouse = currentResidence?.house ?? null;
   const isKepalaKeluarga = Boolean(
-    currentHouse?.members?.some((m) => m.userId === profile?.id && m.relationship === "OWNER")
+    currentHouse?.members?.some(
+      (m) => m.userId === profile?.id && m.relationship === "OWNER",
+    ),
   );
   const houseId = currentHouse?.houseId;
 
@@ -309,11 +326,16 @@ export default function ProfilePage() {
 
   const handleTransferOwner = async (newOwnerUserId: string) => {
     if (!houseId) return;
-    if (!confirm("Jadikan orang ini Kepala Rumah Tangga? Anda akan menjadi anggota keluarga.")) return;
+    if (
+      !confirm(
+        "Jadikan orang ini Kepala Rumah Tangga? Anda akan menjadi anggota keluarga.",
+      )
+    )
+      return;
     setFamilyActionError(null);
     setTransferLoadingId(newOwnerUserId);
     try {
-      const res = await fetch("/api/family/transfer-owner", {
+      const res = await apiFetch("/api/family/transfer-owner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ houseId, newOwnerUserId }),
@@ -333,11 +355,16 @@ export default function ProfilePage() {
 
   const handleRemoveMember = async (memberUserId: string) => {
     if (!houseId) return;
-    if (!confirm("Keluarkan anggota ini dari rumah? Mereka tidak lagi terhubung dengan rumah ini.")) return;
+    if (
+      !confirm(
+        "Keluarkan anggota ini dari rumah? Mereka tidak lagi terhubung dengan rumah ini.",
+      )
+    )
+      return;
     setFamilyActionError(null);
     setRemoveLoadingId(memberUserId);
     try {
-      const res = await fetch("/api/family/remove-member", {
+      const res = await apiFetch("/api/family/remove-member", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ houseId, memberUserId }),
@@ -358,15 +385,21 @@ export default function ProfilePage() {
   const handleAddMemberSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddMemberError(null);
-    const nameErr = !addMemberFullName.trim() ? "Nama wajib" : addMemberFullName.trim().length < 2 ? "Nama minimal 2 karakter" : undefined;
-    const waErr = !addMemberWaNumber.trim() ? "Nomor WhatsApp wajib" : undefined;
+    const nameErr = !addMemberFullName.trim()
+      ? "Nama wajib"
+      : addMemberFullName.trim().length < 2
+        ? "Nama minimal 2 karakter"
+        : undefined;
+    const waErr = !addMemberWaNumber.trim()
+      ? "Nomor WhatsApp wajib"
+      : undefined;
     if (nameErr || waErr) {
       setAddMemberError(nameErr ?? waErr ?? "");
       return;
     }
     setAddMemberLoading(true);
     try {
-      const res = await fetch("/api/family/add-member", {
+      const res = await apiFetch("/api/family/add-member", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -398,7 +431,7 @@ export default function ProfilePage() {
     setSaveError(null);
     setSaving(true);
     try {
-      const res = await fetch("/api/profile", {
+      const res = await apiFetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -422,7 +455,7 @@ export default function ProfilePage() {
               email: data.profile.email,
               dateOfBirth: data.profile.dateOfBirth,
             }
-          : null
+          : null,
       );
       setUser({ id: profile!.id, fullName: data.profile.fullName });
       setIsEditing(false);
@@ -430,11 +463,12 @@ export default function ProfilePage() {
       const blok =
         house?.blok_rumah && house?.name
           ? `Blok — ${house.blok_rumah}`
-          : house?.blok_rumah ?? "Blok —";
+          : (house?.blok_rumah ?? "Blok —");
       const existing = getHeaderProfileCookie();
       setHeaderProfileCookie({
         name: data.profile.fullName,
-        profilePictureUrl: existing?.profilePictureUrl ?? profile?.profilePictureUrl ?? null,
+        profilePictureUrl:
+          existing?.profilePictureUrl ?? profile?.profilePictureUrl ?? null,
         blokRumah: existing?.blokRumah ?? blok,
       });
     } catch {
@@ -461,7 +495,7 @@ export default function ProfilePage() {
     setAvatarLoading(true);
     const formData = new FormData();
     formData.set("file", file);
-    fetch("/api/profile/avatar", {
+    apiFetch("/api/profile/avatar", {
       method: "POST",
       body: formData,
     })
@@ -472,7 +506,9 @@ export default function ProfilePage() {
           return;
         }
         setProfile((prev) =>
-          prev ? { ...prev, profilePictureUrl: data.profilePictureUrl ?? null } : null
+          prev
+            ? { ...prev, profilePictureUrl: data.profilePictureUrl ?? null }
+            : null,
         );
         const existing = getHeaderProfileCookie();
         if (existing) {
@@ -489,7 +525,11 @@ export default function ProfilePage() {
   const handleChangePin = async (e: React.FormEvent) => {
     e.preventDefault();
     setPinError(null);
-    if (currentPin.length !== 4 || newPin.length !== 4 || confirmNewPin.length !== 4) {
+    if (
+      currentPin.length !== 4 ||
+      newPin.length !== 4 ||
+      confirmNewPin.length !== 4
+    ) {
       setPinError("Semua PIN harus 4 digit.");
       return;
     }
@@ -533,7 +573,13 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-full px-4 pb-6 pt-4" style={{ background: "linear-gradient(to bottom, var(--color-bg-gradient-start) 0%, var(--color-surface-alt) 100%)" }}>
+    <main
+      className="min-h-full px-4 pb-6 pt-4"
+      style={{
+        background:
+          "linear-gradient(to bottom, var(--color-bg-gradient-start) 0%, var(--color-surface-alt) 100%)",
+      }}
+    >
       <div className="mx-auto max-w-[400px]">
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50/80 p-4 text-center text-sm text-red-700">
@@ -564,16 +610,24 @@ export default function ProfilePage() {
                   src={profile.profilePictureUrl}
                   size={80}
                 />
-                <span className={`absolute inset-0 flex items-center justify-center rounded-full bg-black/40 transition-opacity ${avatarLoading ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus:opacity-100"}`}>
+                <span
+                  className={`absolute inset-0 flex items-center justify-center rounded-full bg-black/40 transition-opacity ${avatarLoading ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus:opacity-100"}`}
+                >
                   {avatarLoading ? (
-                    <span className="text-xs font-medium text-white">Mengunggah...</span>
+                    <span className="text-xs font-medium text-white">
+                      Mengunggah...
+                    </span>
                   ) : (
-                    <span className="text-xs font-medium text-white">Ubah foto</span>
+                    <span className="text-xs font-medium text-white">
+                      Ubah foto
+                    </span>
                   )}
                 </span>
               </button>
               {avatarError && (
-                <p className="mb-1 text-center text-sm text-red-600">{avatarError}</p>
+                <p className="mb-1 text-center text-sm text-red-600">
+                  {avatarError}
+                </p>
               )}
               <h2 className="text-lg font-semibold text-app-title">
                 {profile.fullName}
@@ -593,7 +647,12 @@ export default function ProfilePage() {
                 </p>
                 <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none snap-x snap-mandatory">
                   {residences.map((res, i) => {
-                    const label = [res.tenant.name, res.community.name || res.community.code].filter(Boolean).join(" · ");
+                    const label = [
+                      res.tenant.name,
+                      res.community.name || res.community.code,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
                     const isSelected = i === selectedResidenceIndex;
                     return (
                       <button
@@ -607,8 +666,15 @@ export default function ProfilePage() {
                         }`}
                       >
                         <span className="flex items-center gap-1.5">
-                          {res.isPrimary && <span className="size-1.5 rounded-full bg-current opacity-80" aria-hidden />}
-                          <span className="truncate max-w-[140px]">{label || "Lingkungan"}</span>
+                          {res.isPrimary && (
+                            <span
+                              className="size-1.5 rounded-full bg-current opacity-80"
+                              aria-hidden
+                            />
+                          )}
+                          <span className="truncate max-w-[140px]">
+                            {label || "Lingkungan"}
+                          </span>
                         </span>
                       </button>
                     );
@@ -618,7 +684,10 @@ export default function ProfilePage() {
             )}
 
             {/* Badge, Role, Tenant/Community — top section (for current residence) */}
-            {(profile.badges?.length ?? 0) > 0 || (currentResidence?.roles?.length ?? 0) > 0 || currentResidence?.tenant || currentResidence?.community ? (
+            {(profile.badges?.length ?? 0) > 0 ||
+            (currentResidence?.roles?.length ?? 0) > 0 ||
+            currentResidence?.tenant ||
+            currentResidence?.community ? (
               <section className="mb-6 rounded-xl border border-default-200 bg-white p-4 shadow-sm">
                 <div className="space-y-3">
                   {profile.badges && profile.badges.length > 0 && (
@@ -631,7 +700,11 @@ export default function ProfilePage() {
                           <span
                             key={badge.id}
                             className="inline-flex size-10 items-center justify-center rounded-full bg-default-100 text-xl transition-transform hover:scale-110"
-                            title={badge.description ? `${badge.name}: ${badge.description}` : badge.name}
+                            title={
+                              badge.description
+                                ? `${badge.name}: ${badge.description}`
+                                : badge.name
+                            }
                           >
                             {badge.icon}
                           </span>
@@ -639,23 +712,31 @@ export default function ProfilePage() {
                       </div>
                     </div>
                   )}
-                  {currentResidence?.roles && currentResidence.roles.length > 0 && (
-                    <div>
-                      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                        Peran di lingkungan ini
-                      </p>
-                      <p className="text-sm font-medium text-app-body">
-                        {currentResidence.roles.map((r) => r.name).join(", ")}
-                      </p>
-                    </div>
-                  )}
-                  {(currentResidence?.tenant || currentResidence?.community) && (
+                  {currentResidence?.roles &&
+                    currentResidence.roles.length > 0 && (
+                      <div>
+                        <p className="mb-1 text-xs font-medium uppercase tracking-wider text-app-body-muted">
+                          Peran di lingkungan ini
+                        </p>
+                        <p className="text-sm font-medium text-app-body">
+                          {currentResidence.roles.map((r) => r.name).join(", ")}
+                        </p>
+                      </div>
+                    )}
+                  {(currentResidence?.tenant ||
+                    currentResidence?.community) && (
                     <div>
                       <p className="mb-1 text-xs font-medium uppercase tracking-wider text-app-body-muted">
                         Lingkungan
                       </p>
                       <p className="text-sm text-app-body">
-                        {[currentResidence.tenant?.name, currentResidence.community?.name ?? currentResidence.community?.code].filter(Boolean).join(" · ")}
+                        {[
+                          currentResidence.tenant?.name,
+                          currentResidence.community?.name ??
+                            currentResidence.community?.code,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </p>
                     </div>
                   )}
@@ -768,7 +849,9 @@ export default function ProfilePage() {
                               </p>
                               <p className="flex items-center gap-1.5 text-xs text-app-body-muted">
                                 {m.username && (
-                                  <span className="truncate">@{m.username}</span>
+                                  <span className="truncate">
+                                    @{m.username}
+                                  </span>
                                 )}
                                 <span
                                   className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
@@ -777,7 +860,8 @@ export default function ProfilePage() {
                                       : "bg-default-200 text-app-body-muted"
                                   }`}
                                 >
-                                  {RELATIONSHIP_LABELS[m.relationship] ?? m.relationship}
+                                  {RELATIONSHIP_LABELS[m.relationship] ??
+                                    m.relationship}
                                 </span>
                               </p>
                             </div>
@@ -792,54 +876,69 @@ export default function ProfilePage() {
               {(() => {
                 const pendingForCurrentHouse =
                   houseId && profile.pendingJoinRequests?.length
-                    ? profile.pendingJoinRequests.filter((r) => r.houseId === houseId)
-                    : profile.pendingJoinRequests ?? [];
-                return currentHouse && pendingForCurrentHouse.length > 0 && (
-                <section className="mt-6 rounded-xl border border-default-200 bg-white shadow-sm overflow-hidden">
-                  <div className="p-4">
-                    <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                      Permintaan bergabung
-                    </h3>
-                    {respondError && (
-                      <p className="mb-3 text-sm text-danger">{respondError}</p>
-                    )}
-                    <ul className="space-y-3" role="list">
-                      {pendingForCurrentHouse.map((req) => (
-                        <li
-                          key={req.id}
-                          className="flex flex-col gap-2 rounded-lg border border-default-100 bg-default-50/50 p-3"
-                        >
-                          <p className="text-sm font-medium text-app-body">
-                            {req.requesterFullName}
+                    ? profile.pendingJoinRequests.filter(
+                        (r) => r.houseId === houseId,
+                      )
+                    : (profile.pendingJoinRequests ?? []);
+                return (
+                  currentHouse &&
+                  pendingForCurrentHouse.length > 0 && (
+                    <section className="mt-6 rounded-xl border border-default-200 bg-white shadow-sm overflow-hidden">
+                      <div className="p-4">
+                        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-app-body-muted">
+                          Permintaan bergabung
+                        </h3>
+                        {respondError && (
+                          <p className="mb-3 text-sm text-danger">
+                            {respondError}
                           </p>
-                          <p className="text-xs text-app-body-muted">
-                            Blok {req.blokRumah} · {formatDate(req.createdAt)}
-                          </p>
-                          <div className="mt-1 flex gap-2">
-                            <PrimaryButton
-                              type="button"
-                              onPress={() => handleRespondToJoinRequest(req.id, "approve")}
-                              isLoading={respondingRequestId === req.id}
-                              isDisabled={respondingRequestId !== null}
-                              className="min-w-20 py-2 text-sm"
+                        )}
+                        <ul className="space-y-3" role="list">
+                          {pendingForCurrentHouse.map((req) => (
+                            <li
+                              key={req.id}
+                              className="flex flex-col gap-2 rounded-lg border border-default-100 bg-default-50/50 p-3"
                             >
-                              Setuju
-                            </PrimaryButton>
-                            <SecondaryButton
-                              type="button"
-                              onClick={() => handleRespondToJoinRequest(req.id, "reject")}
-                              disabled={respondingRequestId !== null}
-                              className="min-w-20 border-red-200 text-red-700 hover:bg-red-50"
-                            >
-                              Tolak
-                            </SecondaryButton>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </section>
-              );
+                              <p className="text-sm font-medium text-app-body">
+                                {req.requesterFullName}
+                              </p>
+                              <p className="text-xs text-app-body-muted">
+                                Blok {req.blokRumah} ·{" "}
+                                {formatDate(req.createdAt)}
+                              </p>
+                              <div className="mt-1 flex gap-2">
+                                <PrimaryButton
+                                  type="button"
+                                  onPress={() =>
+                                    handleRespondToJoinRequest(
+                                      req.id,
+                                      "approve",
+                                    )
+                                  }
+                                  isLoading={respondingRequestId === req.id}
+                                  isDisabled={respondingRequestId !== null}
+                                  className="min-w-20 py-2 text-sm"
+                                >
+                                  Setuju
+                                </PrimaryButton>
+                                <SecondaryButton
+                                  type="button"
+                                  onClick={() =>
+                                    handleRespondToJoinRequest(req.id, "reject")
+                                  }
+                                  disabled={respondingRequestId !== null}
+                                  className="min-w-20 border-red-200 text-red-700 hover:bg-red-50"
+                                >
+                                  Tolak
+                                </SecondaryButton>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </section>
+                  )
+                );
               })()}
 
               {!currentHouse && profile.pendingJoinRequest && (
@@ -848,11 +947,13 @@ export default function ProfilePage() {
                     Menunggu persetujuan
                   </h3>
                   <p className="text-sm text-amber-900">
-                    Permintaan bergabung ke rumah blok {profile.pendingJoinRequest.blokRumah} menunggu persetujuan pemilik ({profile.pendingJoinRequest.ownerFullName}). Anda akan dapat mengakses fitur warga setelah disetujui.
+                    Permintaan bergabung ke rumah blok{" "}
+                    {profile.pendingJoinRequest.blokRumah} menunggu persetujuan
+                    pemilik ({profile.pendingJoinRequest.ownerFullName}). Anda
+                    akan dapat mengakses fitur warga setelah disetujui.
                   </p>
                 </section>
               )}
-
             </div>
 
             {/* Penampilan / Appearance — single line with Edit dropdown */}
@@ -862,11 +963,15 @@ export default function ProfilePage() {
               </h3>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="text-sm text-app-body-muted">Warna tema</span>
+                  <span className="text-sm text-app-body-muted">
+                    Warna tema
+                  </span>
                   <span className="inline-flex items-center gap-1.5 text-sm font-medium text-app-body">
                     <span
                       className="h-4 w-4 shrink-0 rounded-full ring-1 ring-black/10"
-                      style={{ backgroundColor: getTheme(themeId).colors.primary }}
+                      style={{
+                        backgroundColor: getTheme(themeId).colors.primary,
+                      }}
                       aria-hidden
                     />
                     {getTheme(themeId).nameId}
@@ -896,18 +1001,24 @@ export default function ProfilePage() {
                             onClick={async () => {
                               setAppearanceSaving(true);
                               try {
-                                const res = await fetch("/api/profile", {
+                                const res = await apiFetch("/api/profile", {
                                   method: "PATCH",
-                                  headers: { "Content-Type": "application/json" },
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
                                   body: JSON.stringify({ theme_id: theme.id }),
                                 });
                                 const data = await res.json();
                                 if (!res.ok) {
-                                  setSaveError(data.error ?? "Gagal menyimpan tema");
+                                  setSaveError(
+                                    data.error ?? "Gagal menyimpan tema",
+                                  );
                                   return;
                                 }
                                 setThemeId(theme.id);
-                                setProfile((p) => (p ? { ...p, themeId: theme.id } : null));
+                                setProfile((p) =>
+                                  p ? { ...p, themeId: theme.id } : null,
+                                );
                                 setAppearanceDropdownOpen(false);
                               } catch {
                                 setSaveError("Gagal menyimpan tema");
@@ -958,7 +1069,8 @@ export default function ProfilePage() {
                 Kelola Anggota Keluarga
               </h3>
               <p className="mb-4 text-sm text-app-body-muted">
-                Ubah kepala keluarga, keluarkan anggota, atau tambah anggota baru.
+                Ubah kepala keluarga, keluarkan anggota, atau tambah anggota
+                baru.
               </p>
               {familyActionError && (
                 <p className="mb-3 text-sm text-danger">{familyActionError}</p>
@@ -985,7 +1097,8 @@ export default function ProfilePage() {
                               : "bg-default-200 text-app-body-muted"
                           }`}
                         >
-                          {RELATIONSHIP_LABELS[m.relationship] ?? m.relationship}
+                          {RELATIONSHIP_LABELS[m.relationship] ??
+                            m.relationship}
                         </span>
                       </p>
                     </div>
@@ -995,7 +1108,10 @@ export default function ProfilePage() {
                           type="button"
                           onPress={() => handleTransferOwner(m.userId)}
                           isLoading={transferLoadingId === m.userId}
-                          isDisabled={transferLoadingId !== null || removeLoadingId !== null}
+                          isDisabled={
+                            transferLoadingId !== null ||
+                            removeLoadingId !== null
+                          }
                           className="min-w-0 py-2 text-xs"
                         >
                           Jadikan Kepala Keluarga
@@ -1003,7 +1119,10 @@ export default function ProfilePage() {
                         <SecondaryButton
                           type="button"
                           onClick={() => handleRemoveMember(m.userId)}
-                          disabled={transferLoadingId !== null || removeLoadingId !== null}
+                          disabled={
+                            transferLoadingId !== null ||
+                            removeLoadingId !== null
+                          }
                           className="border-red-200 text-red-700 hover:bg-red-50 text-xs py-1.5 px-3"
                         >
                           Keluarkan
@@ -1034,7 +1153,10 @@ export default function ProfilePage() {
                       label="Nama lengkap"
                       placeholder="Contoh: Siti Aminah"
                       value={addMemberFullName}
-                      onValueChange={(v) => { setAddMemberFullName(v); setAddMemberError(null); }}
+                      onValueChange={(v) => {
+                        setAddMemberFullName(v);
+                        setAddMemberError(null);
+                      }}
                       size="sm"
                       variant="bordered"
                       classNames={inputClassNames}
@@ -1054,13 +1176,18 @@ export default function ProfilePage() {
                       label="Nomor WhatsApp"
                       placeholder="08xxxxxxxxxx"
                       value={addMemberWaNumber}
-                      onValueChange={(v) => { setAddMemberWaNumber(v); setAddMemberError(null); }}
+                      onValueChange={(v) => {
+                        setAddMemberWaNumber(v);
+                        setAddMemberError(null);
+                      }}
                       size="sm"
                       variant="bordered"
                       classNames={inputClassNames}
                       autoComplete="tel"
                     />
-                    {addMemberError && <p className="text-sm text-danger">{addMemberError}</p>}
+                    {addMemberError && (
+                      <p className="text-sm text-danger">{addMemberError}</p>
+                    )}
                     <div className="flex gap-2">
                       <SecondaryButton
                         type="button"
@@ -1118,7 +1245,10 @@ export default function ProfilePage() {
                   </label>
                   <OtpInput
                     value={currentPin}
-                    onChange={(v) => { setCurrentPin(v); setPinError(null); }}
+                    onChange={(v) => {
+                      setCurrentPin(v);
+                      setPinError(null);
+                    }}
                     length={4}
                     disabled={pinLoading}
                     error={pinError ?? undefined}
@@ -1131,7 +1261,10 @@ export default function ProfilePage() {
                   </label>
                   <OtpInput
                     value={newPin}
-                    onChange={(v) => { setNewPin(v); setPinError(null); }}
+                    onChange={(v) => {
+                      setNewPin(v);
+                      setPinError(null);
+                    }}
                     length={4}
                     disabled={pinLoading}
                     masked
@@ -1144,7 +1277,10 @@ export default function ProfilePage() {
                   </label>
                   <OtpInput
                     value={confirmNewPin}
-                    onChange={(v) => { setConfirmNewPin(v); setPinError(null); }}
+                    onChange={(v) => {
+                      setConfirmNewPin(v);
+                      setPinError(null);
+                    }}
                     length={4}
                     disabled={pinLoading}
                     masked
@@ -1173,7 +1309,12 @@ export default function ProfilePage() {
               <PrimaryButton
                 type="submit"
                 isLoading={pinLoading}
-                isDisabled={pinLoading || currentPin.length !== 4 || newPin.length !== 4 || confirmNewPin.length !== 4}
+                isDisabled={
+                  pinLoading ||
+                  currentPin.length !== 4 ||
+                  newPin.length !== 4 ||
+                  confirmNewPin.length !== 4
+                }
                 className="flex-1"
               >
                 Simpan PIN

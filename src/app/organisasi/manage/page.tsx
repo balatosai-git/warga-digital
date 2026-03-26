@@ -12,7 +12,12 @@ import {
 } from "@heroicons/react/24/outline";
 import { useAuthStore } from "@/stores/auth-store";
 import { PageLoader, getInitials } from "@/components/ui";
-import type { OrganisationTreeApi, OrganisationRoleApi, OrganisationMemberApi } from "@/lib/organisation-api";
+import { apiFetch } from "@/lib/api-client";
+import type {
+  OrganisationTreeApi,
+  OrganisationRoleApi,
+  OrganisationMemberApi,
+} from "@/lib/organisation-api";
 
 type ModalKind = "add-role" | "edit-role" | "add-member" | "edit-member" | null;
 
@@ -36,7 +41,9 @@ export default function OrganisasiManagePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/organisation", { credentials: "include" });
+      const res = await apiFetch("/api/organisation", {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Gagal memuat");
       const data: OrganisationTreeApi = await res.json();
       setTree(data);
@@ -57,7 +64,7 @@ export default function OrganisasiManagePage() {
       router.replace("/auth/login");
       return;
     }
-    fetch("/api/organisation/permissions", { credentials: "include" })
+    apiFetch("/api/organisation/permissions", { credentials: "include" })
       .then((res) => res.json())
       .then((data: { canManageOrganisation?: boolean }) => {
         setCanManage(Boolean(data?.canManageOrganisation));
@@ -94,7 +101,9 @@ export default function OrganisasiManagePage() {
             >
               <BackIcon />
             </Link>
-            <h1 className="text-xl font-bold text-app-title">Kelola Organisasi</h1>
+            <h1 className="text-xl font-bold text-app-title">
+              Kelola Organisasi
+            </h1>
           </div>
           <button
             type="button"
@@ -134,15 +143,35 @@ export default function OrganisasiManagePage() {
                   role={role}
                   onEdit={() => setModal({ kind: "edit-role", role })}
                   onDelete={async () => {
-                    if (!confirm(`Hapus peran "${role.title}" dan semua anggotanya?`)) return;
-                    const res = await fetch(`/api/organisation/roles/${role.id}`, { method: "DELETE", credentials: "include" });
+                    if (
+                      !confirm(
+                        `Hapus peran "${role.title}" dan semua anggotanya?`,
+                      )
+                    )
+                      return;
+                    const res = await fetch(
+                      `/api/organisation/roles/${role.id}`,
+                      { method: "DELETE", credentials: "include" },
+                    );
                     if (res.ok) void loadTree();
                   }}
-                  onAddMember={() => setModal({ kind: "add-member", roleId: role.id, role })}
-                  onEditMember={(member) => setModal({ kind: "edit-member", roleId: role.id, role, member })}
+                  onAddMember={() =>
+                    setModal({ kind: "add-member", roleId: role.id, role })
+                  }
+                  onEditMember={(member) =>
+                    setModal({
+                      kind: "edit-member",
+                      roleId: role.id,
+                      role,
+                      member,
+                    })
+                  }
                   onDeleteMember={async (member) => {
                     if (!confirm(`Hapus ${member.fullName}?`)) return;
-                    const res = await fetch(`/api/organisation/members/${member.id}`, { method: "DELETE", credentials: "include" });
+                    const res = await fetch(
+                      `/api/organisation/members/${member.id}`,
+                      { method: "DELETE", credentials: "include" },
+                    );
                     if (res.ok) void loadTree();
                   }}
                 />
@@ -219,44 +248,57 @@ function RoleCard({
         {role.members.map((member) => {
           const isVacant = member.userId == null;
           const displayName = isVacant ? "Vacant" : member.fullName;
-          const displaySub = isVacant ? "Peran kosong, belum ada penanggung jawab" : `${member.blockName ? `${member.blockName} · ` : ""}${member.whatsappNumber}`;
+          const displaySub = isVacant
+            ? "Peran kosong, belum ada penanggung jawab"
+            : `${member.blockName ? `${member.blockName} · ` : ""}${member.whatsappNumber}`;
           return (
-          <li
-            key={member.id}
-            className="flex items-center justify-between gap-2 rounded-xl border border-[var(--color-input-border)] bg-app-surface-alt/50 px-3 py-2"
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <div className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold ${isVacant ? "bg-app-body-muted/20 text-app-body-muted" : "bg-app-primary/15 text-app-primary"}`}>
-                {!isVacant && member.profilePictureUrl ? (
-                  <img src={member.profilePictureUrl} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                ) : (
-                  <span>{isVacant ? "—" : getInitials(displayName)}</span>
-                )}
+            <li
+              key={member.id}
+              className="flex items-center justify-between gap-2 rounded-xl border border-[var(--color-input-border)] bg-app-surface-alt/50 px-3 py-2"
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold ${isVacant ? "bg-app-body-muted/20 text-app-body-muted" : "bg-app-primary/15 text-app-primary"}`}
+                >
+                  {!isVacant && member.profilePictureUrl ? (
+                    <img
+                      src={member.profilePictureUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span>{isVacant ? "—" : getInitials(displayName)}</span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-app-title text-sm">
+                    {displayName}
+                  </p>
+                  <p className="truncate text-xs text-app-body-muted">
+                    {displaySub}
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="truncate font-medium text-app-title text-sm">{displayName}</p>
-                <p className="truncate text-xs text-app-body-muted">{displaySub}</p>
+              <div className="flex shrink-0 gap-1">
+                <button
+                  type="button"
+                  onClick={() => onEditMember(member)}
+                  className="rounded-lg p-1.5 text-app-body-muted transition hover:bg-app-surface hover:text-app-body"
+                  aria-label="Edit anggota"
+                >
+                  <PencilIcon />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDeleteMember(member)}
+                  className="rounded-lg p-1.5 text-app-body-muted transition hover:bg-red-50 hover:text-red-600"
+                  aria-label={isVacant ? "Hapus Vacant" : "Hapus anggota"}
+                >
+                  <TrashIcon />
+                </button>
               </div>
-            </div>
-            <div className="flex shrink-0 gap-1">
-              <button
-                type="button"
-                onClick={() => onEditMember(member)}
-                className="rounded-lg p-1.5 text-app-body-muted transition hover:bg-app-surface hover:text-app-body"
-                aria-label="Edit anggota"
-              >
-                <PencilIcon />
-              </button>
-              <button
-                type="button"
-                onClick={() => onDeleteMember(member)}
-                className="rounded-lg p-1.5 text-app-body-muted transition hover:bg-red-50 hover:text-red-600"
-                aria-label={isVacant ? "Hapus Vacant" : "Hapus anggota"}
-              >
-                <TrashIcon />
-              </button>
-            </div>
-          </li>
+            </li>
           );
         })}
       </ul>
@@ -314,17 +356,21 @@ function OrganisationModal({
   const isRole = kind === "add-role" || kind === "edit-role";
   const isMember = kind === "add-member" || kind === "edit-member";
   const titleLabel =
-    kind === "add-role" ? "Tambah peran" :
-    kind === "edit-role" ? "Edit peran" :
-    kind === "add-member" ? "Tambah anggota" : "Edit anggota";
+    kind === "add-role"
+      ? "Tambah peran"
+      : kind === "edit-role"
+        ? "Edit peran"
+        : kind === "add-member"
+          ? "Tambah anggota"
+          : "Edit anggota";
 
   useEffect(() => {
     if (!isMember) return;
     setSelectedUserId(member?.userId ?? "");
     setCommunityUsersLoading(true);
     setCommunityUsers([]);
-    fetch("/api/organisation/community-users", { credentials: "include" })
-      .then((res) => res.ok ? res.json() : [])
+    apiFetch("/api/organisation/community-users", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : []))
       .then((list: CommunityUser[]) => {
         setCommunityUsers(Array.isArray(list) ? list : []);
       })
@@ -338,7 +384,7 @@ function OrganisationModal({
     setSaving(true);
     try {
       if (kind === "add-role") {
-        const res = await fetch("/api/organisation/roles", {
+        const res = await apiFetch("/api/organisation/roles", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -347,7 +393,7 @@ function OrganisationModal({
         const data = await res.json();
         if (!res.ok) throw new Error(data.message ?? "Gagal menambah peran");
       } else if (kind === "edit-role" && role) {
-        const res = await fetch(`/api/organisation/roles/${role.id}`, {
+        const res = await apiFetch(`/api/organisation/roles/${role.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -371,16 +417,19 @@ function OrganisationModal({
     const userId = selectedUserId.trim() ? selectedUserId.trim() : null;
     try {
       if (kind === "add-member" && roleId) {
-        const res = await fetch(`/api/organisation/roles/${roleId}/members`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ userId }),
-        });
+        const res = await apiFetch(
+          `/api/organisation/roles/${roleId}/members`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ userId }),
+          },
+        );
         const data = await res.json();
         if (!res.ok) throw new Error(data.message ?? "Gagal menambah anggota");
       } else if (kind === "edit-member" && member) {
-        const res = await fetch(`/api/organisation/members/${member.id}`, {
+        const res = await apiFetch(`/api/organisation/members/${member.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -424,7 +473,10 @@ function OrganisationModal({
         </div>
 
         {err && (
-          <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+          <p
+            className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700"
+            role="alert"
+          >
             {err}
           </p>
         )}
@@ -432,7 +484,9 @@ function OrganisationModal({
         {isRole && (
           <form onSubmit={handleSubmitRole} className="space-y-4">
             <label className="block">
-              <span className="text-sm font-medium text-app-body">Nama peran</span>
+              <span className="text-sm font-medium text-app-body">
+                Nama peran
+              </span>
               <input
                 type="text"
                 value={title}
@@ -465,7 +519,11 @@ function OrganisationModal({
                 disabled={saving || !title.trim()}
                 className="flex-1 rounded-2xl bg-app-primary py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50"
               >
-                {saving ? "Menyimpan..." : kind === "add-role" ? "Tambah" : "Simpan"}
+                {saving
+                  ? "Menyimpan..."
+                  : kind === "add-role"
+                    ? "Tambah"
+                    : "Simpan"}
               </button>
             </div>
           </form>
@@ -474,8 +532,13 @@ function OrganisationModal({
         {isMember && (
           <form onSubmit={handleSubmitMember} className="space-y-4">
             <label className="block">
-              <span className="text-sm font-medium text-app-body">Pilih warga atau Vacant</span>
-              <p className="mt-0.5 text-xs text-app-body-muted">Hanya warga terdaftar di komunitas ini. Pilih &quot;Vacant&quot; jika peran belum diisi.</p>
+              <span className="text-sm font-medium text-app-body">
+                Pilih warga atau Vacant
+              </span>
+              <p className="mt-0.5 text-xs text-app-body-muted">
+                Hanya warga terdaftar di komunitas ini. Pilih &quot;Vacant&quot;
+                jika peran belum diisi.
+              </p>
               <select
                 value={selectedUserId}
                 onChange={(e) => setSelectedUserId(e.target.value)}
@@ -485,12 +548,15 @@ function OrganisationModal({
                 <option value="">— Vacant (belum ada penanggung jawab)</option>
                 {communityUsers.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.fullName}{u.blockName ? ` · ${u.blockName}` : ""}
+                    {u.fullName}
+                    {u.blockName ? ` · ${u.blockName}` : ""}
                   </option>
                 ))}
               </select>
               {communityUsersLoading && (
-                <p className="mt-1 text-xs text-app-body-muted">Memuat daftar warga...</p>
+                <p className="mt-1 text-xs text-app-body-muted">
+                  Memuat daftar warga...
+                </p>
               )}
             </label>
             <div className="flex gap-2">
@@ -506,7 +572,11 @@ function OrganisationModal({
                 disabled={saving}
                 className="flex-1 rounded-2xl bg-app-primary py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50"
               >
-                {saving ? "Menyimpan..." : kind === "add-member" ? "Tambah" : "Simpan"}
+                {saving
+                  ? "Menyimpan..."
+                  : kind === "add-member"
+                    ? "Tambah"
+                    : "Simpan"}
               </button>
             </div>
           </form>
