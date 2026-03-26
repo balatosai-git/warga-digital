@@ -19,33 +19,8 @@ import {
   type ResidentPostItem,
 } from "@/components/landing/ResidentPostsSection";
 import {
-  MOCK_UMKM_CATEGORIES,
-  MOCK_JASA_CATEGORIES,
-  getItemsByDomain,
   formatRupiah,
 } from "@/lib/constants/marketplace-catalog";
-
-const UMKM_ITEMS: HorizontalCardItem[] = MOCK_UMKM_CATEGORIES.map((c) => {
-  const items = getItemsByDomain("UMKM", c.id);
-  const cheapest = items.length ? Math.min(...items.map((i) => i.final_price)) : null;
-  return {
-    id: c.id,
-    icon: c.icon,
-    title: c.name,
-    description: cheapest != null ? `Mulai ${formatRupiah(cheapest)}` : (c.description ?? ""),
-  };
-});
-
-const JASA_ITEMS: HorizontalCardItem[] = MOCK_JASA_CATEGORIES.map((c) => {
-  const items = getItemsByDomain("JASA", c.id);
-  const cheapest = items.length ? Math.min(...items.map((i) => i.final_price)) : null;
-  return {
-    id: c.id,
-    icon: c.icon,
-    title: c.name,
-    description: cheapest != null ? `Mulai ${formatRupiah(cheapest)}` : (c.description ?? ""),
-  };
-});
 
 const RESIDENT_POSTS: ResidentPostItem[] = [
   {
@@ -86,6 +61,10 @@ export default function LandingPage() {
   const [showVersionBanner, setShowVersionBanner] = useState(true);
   const [isHeaderProfileReady, setIsHeaderProfileReady] = useState(false);
 
+  const [umkmItems, setUmkmItems] = useState<HorizontalCardItem[]>([]);
+  const [jasaItems, setJasaItems] = useState<HorizontalCardItem[]>([]);
+  const [isMarketplaceLoaded, setIsMarketplaceLoaded] = useState(false);
+
   const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => {
     setHasMounted(true);
@@ -110,11 +89,11 @@ export default function LandingPage() {
       return;
     }
 
-    let cancelled = false;
+    let cancelledProfile = false;
     fetch("/api/profile")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (cancelled || !data) return;
+        if (cancelledProfile || !data) return;
         const house = data.house;
         const blok =
           house?.blok_rumah && house?.name
@@ -131,8 +110,37 @@ export default function LandingPage() {
       })
       .catch(() => {});
 
+    let cancelledMarketplace = false;
+    fetch("/api/marketplace/summary")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((resData) => {
+        if (cancelledMarketplace || !resData || !resData.success) {
+          setIsMarketplaceLoaded(true);
+          return;
+        }
+        const buildItems = (cats: any[]) =>
+          cats
+            .filter((c) => c.itemCount > 0)
+            .map((c) => ({
+              id: c.id,
+              icon: c.icon,
+              title: c.title,
+              description:
+                c.cheapest != null
+                  ? `Mulai ${formatRupiah(c.cheapest)}`
+                  : c.description ?? "",
+            }));
+        setUmkmItems(buildItems(resData.data.UMKM || []));
+        setJasaItems(buildItems(resData.data.JASA || []));
+        setIsMarketplaceLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelledMarketplace) setIsMarketplaceLoaded(true);
+      });
+
     return () => {
-      cancelled = true;
+      cancelledProfile = true;
+      cancelledMarketplace = true;
     };
   }, [isAuthenticated, user?.fullName]);
 
@@ -168,17 +176,51 @@ export default function LandingPage() {
         )}
         <FeatureGrid />
 
-        <HorizontalCardStrip
-          title="Umkm RT 03"
-          items={UMKM_ITEMS}
-          viewAllHref="#jual-beli"
-        />
+        {!isMarketplaceLoaded ? (
+          <div className="py-8 text-center">
+            <p className="text-sm font-medium text-app-body-muted animate-pulse">Memuat layanan warga...</p>
+          </div>
+        ) : (
+          <>
+            {umkmItems.length > 0 ? (
+              <HorizontalCardStrip
+                title="Umkm RT 03"
+                items={umkmItems}
+              />
+            ) : (
+              <section className="py-4">
+                <div className="mb-3 px-4">
+                  <h2 className="text-lg font-bold text-app-title">Umkm RT 03</h2>
+                </div>
+                <div className="px-4">
+                  <div className="rounded-xl border border-dashed border-emerald-200/50 bg-emerald-50/50 p-6 flex flex-col items-center justify-center text-center">
+                    <p className="text-[14px] text-emerald-800 font-semibold mb-1">Dukung Ekonomi Tetangga!</p>
+                    <p className="text-[12px] text-emerald-700 leading-relaxed">Belum ada listing UMKM terdaftar di lingkungan ini.</p>
+                  </div>
+                </div>
+              </section>
+            )}
 
-        <HorizontalCardStrip
-          title="Jasa RT 03"
-          items={JASA_ITEMS}
-          viewAllHref="#jasa"
-        />
+            {jasaItems.length > 0 ? (
+              <HorizontalCardStrip
+                title="Jasa RT 03"
+                items={jasaItems}
+              />
+            ) : (
+              <section className="py-4">
+                <div className="mb-3 px-4">
+                  <h2 className="text-lg font-bold text-app-title">Jasa RT 03</h2>
+                </div>
+                <div className="px-4">
+                  <div className="rounded-xl border border-dashed border-emerald-200/50 bg-emerald-50/50 p-6 flex flex-col items-center justify-center text-center">
+                    <p className="text-[14px] text-emerald-800 font-semibold mb-1">Berdayakan Keahlian Warga!</p>
+                    <p className="text-[12px] text-emerald-700 leading-relaxed">Belum ada listing Jasa terdaftar di lingkungan ini.</p>
+                  </div>
+                </div>
+              </section>
+            )}
+          </>
+        )}
 
         <ResidentPostsSection
           title="Info Warga"
