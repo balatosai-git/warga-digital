@@ -50,7 +50,7 @@ const JASA_ITEMS: HorizontalCardItem[] = MOCK_JASA_CATEGORIES.map((c) => {
 const RESIDENT_POSTS: ResidentPostItem[] = [
   {
     id: "post-1",
-    title: "Bazar RT 03 – Akhir Pekan Ini",
+    title: "Bazar RT 03 - Akhir Pekan Ini",
     excerpt: "Lokasi lapangan RT. Bawa keluarga, banyak stand makanan dan kerajinan warga.",
     author: "Pengurus RT 03",
   },
@@ -84,6 +84,7 @@ export default function LandingPage() {
     blokRumah: string;
   } | null>(null);
   const [showVersionBanner, setShowVersionBanner] = useState(true);
+  const [isHeaderProfileReady, setIsHeaderProfileReady] = useState(false);
 
   const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => {
@@ -99,11 +100,16 @@ export default function LandingPage() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
+
+    setIsHeaderProfileReady(false);
+
     const fromCookie = getHeaderProfileCookie();
     if (fromCookie) {
       setHeaderProfile(fromCookie);
+      setIsHeaderProfileReady(true);
       return;
     }
+
     let cancelled = false;
     fetch("/api/profile")
       .then((res) => (res.ok ? res.json() : null))
@@ -112,8 +118,8 @@ export default function LandingPage() {
         const house = data.house;
         const blok =
           house?.blok_rumah && house?.name
-            ? `Blok — ${house.blok_rumah}`
-            : house?.blok_rumah ?? "Blok —";
+            ? `Blok - ${house.blok_rumah}`
+            : house?.blok_rumah ?? "Blok -";
         const payload = {
           name: data.fullName ?? user?.fullName ?? "Warga",
           profilePictureUrl: data.profilePictureUrl ?? null,
@@ -121,23 +127,25 @@ export default function LandingPage() {
         };
         setHeaderProfile(payload);
         setHeaderProfileCookie(payload);
+        setIsHeaderProfileReady(true);
       })
       .catch(() => {});
+
     return () => {
       cancelled = true;
     };
   }, [isAuthenticated, user?.fullName]);
 
-  if (!hasMounted || !isAuthenticated) {
+  if (!hasMounted || !isAuthenticated || !isHeaderProfileReady || !headerProfile) {
     return <PageLoader message="Memuat..." />;
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-app-surface-alt">
       <LandingHeader
-        name={headerProfile?.name ?? user?.fullName ?? "Warga"}
-        profilePictureUrl={headerProfile?.profilePictureUrl}
-        blokRumah={headerProfile?.blokRumah ?? "Blok —"}
+        name={headerProfile.name}
+        profilePictureUrl={headerProfile.profilePictureUrl}
+        blokRumah={headerProfile.blokRumah}
         saldo="Rp 0"
         onNotificationPress={() => router.push("/notifikasi")}
       />
