@@ -20,6 +20,7 @@ export const LANDING_FEATURES = [
     description: "Surat Keterangan, Surat Izin, dll.",
     href: "#administrasi",
     icon: DocumentTextIcon,
+    color: "text-blue-600 dark:text-blue-400",
   },
   {
     id: "kas-rt",
@@ -27,6 +28,7 @@ export const LANDING_FEATURES = [
     description: "Pemasukan, pengeluaran, saldo RT",
     href: "/kas-rt",
     icon: BanknotesIcon,
+    color: "text-emerald-600 dark:text-emerald-400",
   },
   {
     id: "ipl",
@@ -34,6 +36,7 @@ export const LANDING_FEATURES = [
     description: "Iuran bulanan perawatan",
     href: "#ipl",
     icon: BuildingOffice2Icon,
+    color: "text-indigo-600 dark:text-indigo-400",
   },
   {
     id: "jual-beli",
@@ -41,6 +44,7 @@ export const LANDING_FEATURES = [
     description: "Marketplace warga",
     href: "#jual-beli",
     icon: ShoppingCartIcon,
+    color: "text-orange-600 dark:text-orange-400",
   },
   {
     id: "jasa",
@@ -48,6 +52,7 @@ export const LANDING_FEATURES = [
     description: "Layanan jasa warga",
     href: "#jasa",
     icon: BoltIcon,
+    color: "text-yellow-600 dark:text-yellow-400",
   },
   {
     id: "event",
@@ -55,6 +60,7 @@ export const LANDING_FEATURES = [
     description: "Acara warga",
     href: "#event",
     icon: CalendarDaysIcon,
+    color: "text-purple-600 dark:text-purple-400",
   },
   {
     id: "organisasi",
@@ -62,6 +68,7 @@ export const LANDING_FEATURES = [
     description: "Struktur & kontak pengurus",
     href: "/organisasi",
     icon: UserGroupIcon,
+    color: "text-sky-600 dark:text-sky-400",
   },
   {
     id: "informasi",
@@ -69,6 +76,7 @@ export const LANDING_FEATURES = [
     description: "Pengumuman & info penting RT",
     href: "#informasi",
     icon: InformationCircleIcon,
+    color: "text-teal-600 dark:text-teal-400",
   },
   {
     id: "emergency",
@@ -76,6 +84,7 @@ export const LANDING_FEATURES = [
     description: "Kontak darurat & bantuan cepat",
     href: "#emergency",
     icon: ExclamationTriangleIcon,
+    color: "text-red-600 dark:text-red-400",
   },
 ] as const;
 
@@ -106,8 +115,8 @@ export function FeatureGrid({ title = "Fitur" }: FeatureGridProps) {
               {...wrapperProps}
               className="flex flex-col items-center gap-2 rounded-2xl bg-app-surface p-4 shadow-sm transition-shadow hover:shadow-md active:opacity-90"
             >
-              <Icon className="h-9 w-9 text-app-primary" aria-hidden />
-              <span className="text-center text-sm font-semibold text-app-title">
+              <Icon className={`h-9 w-9 ${feature.color}`} aria-hidden />
+              <span className={`text-center text-sm font-semibold ${feature.color}`}>
                 {feature.label}
               </span>
             </Wrapper>
