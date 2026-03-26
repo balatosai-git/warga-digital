@@ -341,6 +341,32 @@ export async function POST(request: NextRequest) {
         if (houseRow?.created_by) createdByFullName = userMap.get(houseRow.created_by) ?? "—";
       }
 
+      if (ownerRow?.user_id) {
+        const { error: notifErr } = await supabase.from("notifications").insert({
+          tenant_id: tenantId,
+          recipient_user_id: ownerRow.user_id,
+          actor_user_id: userId,
+          type: "RUMAH",
+          priority: "NORMAL",
+          title: "Permintaan Bergabung Rumah",
+          body: `${trimmedName} meminta bergabung ke rumah ${blokRumah}.`,
+          action_url: "/profil",
+          entity_table: "house_join_requests",
+          entity_id: requestId,
+          dedupe_key: `house_join_request:${requestId}:owner`,
+          metadata: {
+            houseId,
+            blokRumah,
+            requesterUserId: userId,
+            requestId,
+          },
+          created_by: userId,
+        });
+        if (notifErr) {
+          console.error("[Register] Insert owner notification error:", notifErr);
+        }
+      }
+
       const { error: _b1 } = await supabase.from("user_badges").insert({ user_id: userId, badge_id: 1 });
       if (_b1 && _b1.code !== "23505") console.error("[Register] user_badges insert:", _b1);
       const { data: user } = await supabase

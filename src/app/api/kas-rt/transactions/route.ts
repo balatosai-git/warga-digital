@@ -173,6 +173,49 @@ export async function POST(request: Request) {
       );
     }
 
+    const { data: recipientRows, error: recipientErr } = await supabase
+      .from("tenant_users")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "ACTIVE");
+
+    if (recipientErr) {
+      console.error("[Kas RT] Fetch notification recipients error:", recipientErr);
+    } else if (recipientRows && recipientRows.length > 0) {
+      const uniqueRecipients = Array.from(
+        new Set(recipientRows.map((row) => row.user_id).filter(Boolean))
+      );
+
+      const notificationRows = uniqueRecipients.map((recipientUserId) => ({
+        tenant_id: tenantId,
+        recipient_user_id: recipientUserId,
+        actor_user_id: session.userId,
+        type: "KAS_RT",
+        priority: "NORMAL",
+        title: type === "income" ? "Pemasukan Kas RT Baru" : "Pengeluaran Kas RT Baru",
+        body: `${title.trim()} - Rp ${Math.round(amount).toLocaleString("id-ID")}`,
+        action_url: "/kas-rt",
+        entity_table: "kas_rt_transactions",
+        entity_id: data.id,
+        dedupe_key: `kas_rt_transaction:${data.id}:to:${recipientUserId}`,
+        metadata: {
+          transactionId: data.id,
+          transactionType: type,
+          amount,
+          date,
+        },
+        created_by: session.userId,
+      }));
+
+      const { error: notifErr } = await supabase
+        .from("notifications")
+        .insert(notificationRows);
+
+      if (notifErr) {
+        console.error("[Kas RT] Insert notifications error:", notifErr);
+      }
+    }
+
     const attachmentNames: string[] = [];
     const attachmentsToInsert: {
       transaction_id: string;

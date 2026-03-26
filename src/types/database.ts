@@ -12,6 +12,8 @@ export type AuthorityStatus = "ACTIVE" | "REVOKED";
 export type EntityType = "USER" | "HOUSE" | "USER_HOUSE";
 export type VerificationStatus = "VERIFIED" | "REVOKED";
 export type HouseJoinRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type NotificationType = "SYSTEM" | "KAS_RT" | "RUMAH" | "ORGANISASI" | "MARKETPLACE";
+export type NotificationPriority = "LOW" | "NORMAL" | "HIGH";
 
 /* ─── Marketplace enums ──────────────────────────────────────────────────── */
 export type MarketplaceDomainCode = "UMKM" | "JASA";
@@ -206,6 +208,27 @@ export interface Session {
   last_active_at: string;
 }
 
+export interface Notification {
+  id: string;
+  tenant_id: string | null;
+  recipient_user_id: string;
+  actor_user_id: string | null;
+  type: NotificationType;
+  priority: NotificationPriority;
+  title: string;
+  body: string;
+  action_url: string | null;
+  entity_table: string | null;
+  entity_id: string | null;
+  dedupe_key: string | null;
+  metadata: Record<string, unknown>;
+  read_at: string | null;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
 /* ─── Marketplace ────────────────────────────────────────────────────────── */
 
 export interface MarketplaceDomain {
@@ -336,6 +359,7 @@ export interface Database {
       verifications: { Row: Verification; Insert: Partial<Verification>; Update: Partial<Verification> };
       otp_codes: { Row: OtpCode; Insert: Partial<OtpCode>; Update: Partial<OtpCode> };
       sessions: { Row: Session; Insert: Partial<Session>; Update: Partial<Session> };
+      notifications: { Row: Notification; Insert: Partial<Notification>; Update: Partial<Notification> };
       marketplace_domains: { Row: MarketplaceDomain; Insert: Partial<MarketplaceDomain>; Update: Partial<MarketplaceDomain> };
       marketplace_categories: { Row: MarketplaceCategory; Insert: Partial<MarketplaceCategory>; Update: Partial<MarketplaceCategory> };
       marketplace_items: { Row: MarketplaceItem; Insert: Partial<MarketplaceItem>; Update: Partial<MarketplaceItem> };

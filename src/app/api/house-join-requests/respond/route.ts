@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     const { data: house } = await supabase
       .from("houses")
-      .select("id, tenant_id")
+      .select("id, tenant_id, blok_rumah")
       .eq("id", joinRequest.house_id)
       .single();
 
@@ -102,6 +102,26 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
+
+      const { error: notifErr } = await supabase.from("notifications").insert({
+        tenant_id: house.tenant_id,
+        recipient_user_id: joinRequest.requester_user_id,
+        actor_user_id: session.userId,
+        type: "RUMAH",
+        priority: "NORMAL",
+        title: "Permintaan Ditolak",
+        body: `Permintaan bergabung ke rumah ${house.blok_rumah ?? "-"} ditolak.`,
+        action_url: "/profil",
+        entity_table: "house_join_requests",
+        entity_id: requestId,
+        dedupe_key: `house_join_request:${requestId}:reject`,
+        metadata: { requestId, houseId: house.id, action: "reject" },
+        created_by: session.userId,
+      });
+      if (notifErr) {
+        console.error("[HouseJoinRespond] Reject notification error:", notifErr);
+      }
+
       return NextResponse.json({ success: true, action: "reject" });
     }
 
@@ -155,6 +175,25 @@ export async function POST(request: NextRequest) {
           { error: "Gagal memperbarui permintaan" },
           { status: 500 }
         );
+      }
+
+      const { error: notifErr } = await supabase.from("notifications").insert({
+        tenant_id: house.tenant_id,
+        recipient_user_id: joinRequest.requester_user_id,
+        actor_user_id: session.userId,
+        type: "RUMAH",
+        priority: "NORMAL",
+        title: "Permintaan Disetujui",
+        body: `Anda sudah ditambahkan ke rumah ${house.blok_rumah ?? "-"}.`,
+        action_url: "/profil",
+        entity_table: "house_join_requests",
+        entity_id: requestId,
+        dedupe_key: `house_join_request:${requestId}:approve`,
+        metadata: { requestId, houseId: house.id, action: "approve" },
+        created_by: session.userId,
+      });
+      if (notifErr) {
+        console.error("[HouseJoinRespond] Approve notification error:", notifErr);
       }
 
       return NextResponse.json({ success: true, action: "approve" });

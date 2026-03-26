@@ -1,11 +1,46 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
 import { PageLoader } from "@/components/ui";
 
-// ─── Icon components (SVG) ───────────────────────────────────────────────────
+type NotificationType =
+  | "SYSTEM"
+  | "KAS_RT"
+  | "RUMAH"
+  | "ORGANISASI"
+  | "MARKETPLACE";
+
+interface ApiNotification {
+  id: string;
+  type: NotificationType;
+  priority: "LOW" | "NORMAL" | "HIGH";
+  title: string;
+  body: string;
+  actionUrl: string | null;
+  metadata: Record<string, unknown>;
+  readAt: string | null;
+  createdAt: string;
+}
+
+interface NotificationItem {
+  id: string;
+  title: string;
+  body: string;
+  timeLabel: string;
+  isUnread: boolean;
+  actionUrl: string | null;
+  iconBg: string;
+  iconColor: string;
+  icon: ReactNode;
+}
+
+interface NotificationGroup {
+  label: string;
+  items: NotificationItem[];
+  muted?: boolean;
+}
 
 function ArrowBackIcon() {
   return (
@@ -106,20 +141,6 @@ function VerifiedUserIcon() {
   );
 }
 
-function GavelIcon() {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden
-    >
-      <path d="m1 21 2-2 9.5-9.5-2-2L1 21zm16.71-14.29-2.83-2.83-1.42 1.42 1.42 1.42-9.88 9.88L7.41 19l9.88-9.88 1.42 1.42 1.42-1.42zM19 2l-3 3 3 3 3-3-3-3z" />
-    </svg>
-  );
-}
-
 function LeafIcon() {
   return (
     <svg
@@ -134,94 +155,120 @@ function LeafIcon() {
   );
 }
 
-// ─── Data types ──────────────────────────────────────────────────────────────
-
-interface NotificationItem {
-  id: string;
-  title: string;
-  body: string;
-  timeLabel: string;
-  isUnread: boolean;
+function getNotificationVisual(type: NotificationType): {
   iconBg: string;
   iconColor: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
+} {
+  switch (type) {
+    case "KAS_RT":
+      return {
+        iconBg: "bg-emerald-100",
+        iconColor: "text-emerald-700",
+        icon: <WalletIcon filled />,
+      };
+    case "RUMAH":
+      return {
+        iconBg: "bg-emerald-200/60",
+        iconColor: "text-emerald-800",
+        icon: <PersonAddIcon />,
+      };
+    case "ORGANISASI":
+      return {
+        iconBg: "bg-[#abf4ac]/60",
+        iconColor: "text-emerald-800",
+        icon: <CampaignIcon />,
+      };
+    case "MARKETPLACE":
+      return {
+        iconBg: "bg-[var(--color-surface-alt)]",
+        iconColor: "text-app-body-muted",
+        icon: <WalletIcon />,
+      };
+    case "SYSTEM":
+    default:
+      return {
+        iconBg: "bg-[var(--color-surface-alt)]",
+        iconColor: "text-app-body-muted",
+        icon: <VerifiedUserIcon />,
+      };
+  }
 }
 
-interface NotificationGroup {
-  label: string;
-  items: NotificationItem[];
-  muted?: boolean;
+function getGroupLabel(value: Date): string {
+  const now = new Date();
+  const startNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startValue = new Date(
+    value.getFullYear(),
+    value.getMonth(),
+    value.getDate()
+  );
+
+  const daysDiff = Math.floor(
+    (startNow.getTime() - startValue.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (daysDiff <= 0) return "Terbaru";
+  if (daysDiff === 1) return "Kemarin";
+  if (daysDiff <= 7) return "Minggu Ini";
+  return "Sebelumnya";
 }
 
-// ─── Static mock data ─────────────────────────────────────────────────────────
+function formatRelativeTime(value: Date): string {
+  const diff = Date.now() - value.getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "Baru saja";
+  if (minutes < 60) return `${minutes} menit yang lalu`;
 
-function buildGroups(): NotificationGroup[] {
-  return [
-    {
-      label: "Terbaru",
-      items: [
-        {
-          id: "1",
-          title: "Pemasukan Kas RT",
-          body: "Iuran sampah dari Blok A-12 telah diterima.",
-          timeLabel: "10 menit yang lalu",
-          isUnread: true,
-          iconBg: "bg-emerald-100",
-          iconColor: "text-emerald-700",
-          icon: <WalletIcon filled />,
-        },
-        {
-          id: "2",
-          title: "Bazar RT 03",
-          body: "Jangan lupa kunjungi bazar besok pagi di lapangan.",
-          timeLabel: "2 jam yang lalu",
-          isUnread: true,
-          iconBg: "bg-[#abf4ac]/60",
-          iconColor: "text-emerald-800",
-          icon: <CampaignIcon />,
-        },
-        {
-          id: "3",
-          title: "Penghuni Baru",
-          body: "Permohonan bergabung dari Blok B-05 sedang diproses.",
-          timeLabel: "5 jam yang lalu",
-          isUnread: false,
-          iconBg: "bg-emerald-200/60",
-          iconColor: "text-emerald-800",
-          icon: <PersonAddIcon />,
-        },
-        {
-          id: "4",
-          title: "Verifikasi Akun",
-          body: "Akun Anda telah berhasil diverifikasi oleh Admin.",
-          timeLabel: "Kemarin",
-          isUnread: false,
-          iconBg: "bg-[var(--color-surface-alt)]",
-          iconColor: "text-app-body-muted",
-          icon: <VerifiedUserIcon />,
-        },
-      ],
-    },
-    {
-      label: "Minggu Ini",
-      muted: true,
-      items: [
-        {
-          id: "5",
-          title: "Hasil Rapat RT",
-          body: "Notulensi rapat bulanan Agustus telah diunggah.",
-          timeLabel: "Selasa, 14:00",
-          isUnread: false,
-          iconBg: "bg-[var(--color-input-border)]/50",
-          iconColor: "text-app-body-muted",
-          icon: <GavelIcon />,
-        },
-      ],
-    },
-  ];
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} jam yang lalu`;
+
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Kemarin";
+  if (days < 7) return `${days} hari yang lalu`;
+
+  return value.toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+function buildGroupsFromApi(notifications: ApiNotification[]): NotificationGroup[] {
+  const grouped = new Map<string, NotificationItem[]>();
+
+  for (const row of notifications) {
+    const createdAtDate = new Date(row.createdAt);
+    const groupLabel = getGroupLabel(createdAtDate);
+    const visual = getNotificationVisual(row.type);
+
+    const item: NotificationItem = {
+      id: row.id,
+      title: row.title,
+      body: row.body,
+      timeLabel: formatRelativeTime(createdAtDate),
+      isUnread: row.readAt == null,
+      actionUrl: row.actionUrl,
+      iconBg: visual.iconBg,
+      iconColor: visual.iconColor,
+      icon: visual.icon,
+    };
+
+    const existing = grouped.get(groupLabel) ?? [];
+    existing.push(item);
+    grouped.set(groupLabel, existing);
+  }
+
+  const order = ["Terbaru", "Kemarin", "Minggu Ini", "Sebelumnya"];
+  return order
+    .filter((label) => (grouped.get(label)?.length ?? 0) > 0)
+    .map((label) => ({
+      label,
+      muted: label === "Sebelumnya",
+      items: grouped.get(label) ?? [],
+    }));
+}
 
 function NotificationCard({
   item,
@@ -230,20 +277,19 @@ function NotificationCard({
 }: {
   item: NotificationItem;
   muted: boolean;
-  onRead: (id: string) => void;
+  onRead: (id: string, actionUrl: string | null) => void;
 }) {
   return (
     <button
       type="button"
-      onClick={() => onRead(item.id)}
+      onClick={() => onRead(item.id, item.actionUrl)}
       className={`w-full text-left rounded-3xl p-5 flex gap-4 relative shadow-[0_8px_24px_rgba(0,40,5,0.06)] transition-all active:scale-[0.985] focus-visible:outline-none ${
         muted
           ? "bg-app-surface-alt opacity-70"
           : "bg-app-surface hover:shadow-[0_12px_32px_rgba(0,40,5,0.10)]"
       }`}
-      aria-label={`${item.isUnread ? "Belum dibaca: " : ""}${item.title} — ${item.body}`}
+      aria-label={`${item.isUnread ? "Belum dibaca: " : ""}${item.title} - ${item.body}`}
     >
-      {/* Unread dot */}
       {item.isUnread && (
         <span
           className="absolute top-5 right-5 w-2.5 h-2.5 rounded-full bg-app-primary shadow-[0_0_6px_rgba(67,160,71,0.6)]"
@@ -251,14 +297,12 @@ function NotificationCard({
         />
       )}
 
-      {/* Icon badge */}
       <span
         className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${item.iconBg} ${item.iconColor}`}
       >
         {item.icon}
       </span>
 
-      {/* Content */}
       <span className="flex flex-col gap-1 min-w-0 flex-1">
         <span
           className={`font-bold text-app-title text-sm leading-snug ${item.isUnread ? "" : "font-semibold"}`}
@@ -279,7 +323,6 @@ function NotificationCard({
 function TipsWargaBanner() {
   return (
     <div className="relative overflow-hidden rounded-3xl p-6 bg-gradient-to-br from-emerald-600 to-emerald-700 text-white shadow-[0_16px_40px_rgba(0,80,20,0.25)]">
-      {/* Decorative circles */}
       <div className="absolute -top-6 -right-6 w-32 h-32 rounded-full bg-white/10" />
       <div className="absolute -bottom-4 -left-4 w-24 h-24 rounded-full bg-white/10" />
       <div className="absolute top-1/2 right-8 w-16 h-16 rounded-full bg-white/5" />
@@ -307,58 +350,120 @@ function TipsWargaBanner() {
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function NotifikasiPage() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const [hasMounted, setHasMounted] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [groups, setGroups] = useState<NotificationGroup[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setHasMounted(true);
-    setGroups(buildGroups());
   }, []);
 
   useEffect(() => {
     if (!hasMounted) return;
     if (!isAuthenticated) {
       router.replace("/auth/login");
+      return;
     }
+
+    async function loadNotifications() {
+      try {
+        setErrorMessage(null);
+        setIsLoading(true);
+
+        const response = await fetch("/api/notifications", {
+          credentials: "include",
+        });
+
+        if (response.status === 401) {
+          router.replace("/auth/login");
+          return;
+        }
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          throw new Error(payload.error ?? "Gagal memuat notifikasi");
+        }
+
+        const payload = (await response.json()) as {
+          notifications: ApiNotification[];
+        };
+
+        setGroups(buildGroupsFromApi(payload.notifications ?? []));
+      } catch (error) {
+        setErrorMessage(
+          error instanceof Error ? error.message : "Gagal memuat notifikasi"
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    void loadNotifications();
   }, [hasMounted, isAuthenticated, router]);
 
-  if (!hasMounted || !isAuthenticated) {
+  if (!hasMounted || !isAuthenticated || isLoading) {
     return <PageLoader message="Memuat notifikasi..." />;
   }
 
   const unreadCount = groups
     .flatMap((g) => g.items)
-    .filter((i) => i.isUnread).length;
+    .filter((item) => item.isUnread).length;
 
-  function markAllRead() {
+  async function markAllRead() {
     setGroups((prev) =>
-      prev.map((g) => ({
-        ...g,
-        items: g.items.map((item) => ({ ...item, isUnread: false })),
+      prev.map((group) => ({
+        ...group,
+        items: group.items.map((item) => ({ ...item, isUnread: false })),
       }))
     );
+
+    try {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ markAllRead: true }),
+      });
+    } catch {
+      setErrorMessage("Gagal menandai semua notifikasi sebagai dibaca");
+    }
   }
 
-  function markOneRead(id: string) {
+  async function markOneRead(id: string, actionUrl: string | null) {
     setGroups((prev) =>
-      prev.map((g) => ({
-        ...g,
-        items: g.items.map((item) =>
+      prev.map((group) => ({
+        ...group,
+        items: group.items.map((item) =>
           item.id === id ? { ...item, isUnread: false } : item
         ),
       }))
     );
+
+    try {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ notificationId: id }),
+      });
+    } catch {
+      setErrorMessage("Gagal menandai notifikasi");
+    }
+
+    if (actionUrl) {
+      router.push(actionUrl);
+    }
   }
 
   return (
     <main className="flex h-full min-h-0 flex-col bg-app-surface-alt">
-      {/* ── Top App Bar ── */}
       <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-app-surface/90 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,40,5,0.06)] border-b border-[var(--color-input-border)]">
         <div className="flex items-center gap-3">
           <button
@@ -395,14 +500,18 @@ export default function NotifikasiPage() {
         )}
       </header>
 
-      {/* ── Notification List ── */}
       <div className="flex-1 overflow-y-auto px-4 pb-8 pt-4 space-y-6">
-        {groups.map((group, gi) => (
-          <section key={group.label} aria-labelledby={`notif-group-${gi}`}>
-            {/* Group label */}
+        {errorMessage && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        )}
+
+        {groups.map((group, groupIndex) => (
+          <section key={group.label} aria-labelledby={`notif-group-${groupIndex}`}>
             <div className="flex items-center gap-2 mb-3 px-1">
               <span
-                id={`notif-group-${gi}`}
+                id={`notif-group-${groupIndex}`}
                 className="text-xs font-semibold text-app-body-muted uppercase tracking-wider"
               >
                 {group.label}
@@ -410,7 +519,6 @@ export default function NotifikasiPage() {
               <span className="flex-1 h-px bg-[var(--color-input-border)]" />
             </div>
 
-            {/* Cards */}
             <div className="space-y-3">
               {group.items.map((item) => (
                 <NotificationCard
@@ -424,13 +532,13 @@ export default function NotifikasiPage() {
           </section>
         ))}
 
-        {/* Tips Warga editorial banner – positioned after first group */}
-        <div className="pt-2">
-          <TipsWargaBanner />
-        </div>
+        {groups.length > 0 && (
+          <div className="pt-2">
+            <TipsWargaBanner />
+          </div>
+        )}
 
-        {/* Empty state guard */}
-        {groups.every((g) => g.items.length === 0) && (
+        {groups.every((group) => group.items.length === 0) && (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
             <span className="text-5xl">🔔</span>
             <p className="text-sm text-app-body-muted font-medium">
