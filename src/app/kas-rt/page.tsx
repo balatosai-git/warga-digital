@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowDownTrayIcon, FunnelIcon } from "@heroicons/react/24/outline";
 import { useAuthStore } from "@/stores/auth-store";
 import { PageLoader } from "@/components/ui";
 
@@ -464,18 +465,7 @@ export default function KasRTPage() {
                 aria-controls="transaction-filter-panel"
                 aria-label={isFilterOpen ? "Tutup filter" : "Buka filter transaksi"}
               >
-                <svg
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
-                </svg>
+                <FunnelIcon className="h-5 w-5" aria-hidden />
               </button>
 
               <button
@@ -487,20 +477,7 @@ export default function KasRTPage() {
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/95 text-emerald-800 shadow-sm transition hover:bg-white active:scale-[0.98]"
                 aria-label="Unduh laporan kas RT"
               >
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M12 3v12" />
-                  <path d="M8 11l4 4 4-4" />
-                  <path d="M4 19h16" />
-                </svg>
+                <ArrowDownTrayIcon className="h-5 w-5" aria-hidden />
               </button>
             </div>
             {canSubmitTransaction && (

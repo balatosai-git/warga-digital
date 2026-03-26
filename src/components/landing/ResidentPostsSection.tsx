@@ -19,32 +19,18 @@ interface ResidentPostsSectionProps {
   detailHref?: (id: string) => string;
 }
 
-function PostPlaceholderSvg() {
+function PostPlaceholder() {
   return (
-    <svg
-      className="h-full w-full object-cover"
-      viewBox="0 0 400 160"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
+    <div
+      className="h-full w-full bg-gradient-to-br from-[var(--color-primary-muted)] to-[color:color-mix(in_oklab,var(--color-primary),transparent_80%)]"
       aria-hidden
     >
-      <defs>
-        <linearGradient
-          id="post-card-bg"
-          x1="0%"
-          y1="0%"
-          x2="100%"
-          y2="100%"
-        >
-          <stop offset="0%" stopColor="var(--color-primary-muted)" />
-          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.2" />
-        </linearGradient>
-      </defs>
-      <rect width="400" height="160" fill="url(#post-card-bg)" />
-      <rect x="24" y="40" width="200" height="12" rx="2" fill="white" fillOpacity="0.9" />
-      <rect x="24" y="60" width="280" height="8" rx="2" fill="white" fillOpacity="0.6" />
-      <rect x="24" y="74" width="240" height="8" rx="2" fill="white" fillOpacity="0.6" />
-    </svg>
+      <div className="px-6 pt-10">
+        <div className="h-3 w-[55%] rounded bg-white/90" />
+        <div className="mt-3 h-2 w-[76%] rounded bg-white/60" />
+        <div className="mt-2 h-2 w-[64%] rounded bg-white/60" />
+      </div>
+    </div>
   );
 }
 
@@ -64,7 +50,7 @@ function PostCard({ item, href }: { item: ResidentPostItem; href: string }) {
               className="h-full w-full object-cover"
             />
           ) : (
-            <PostPlaceholderSvg />
+            <PostPlaceholder />
           )}
         </div>
         <div className="min-w-0 flex-1 px-3 py-2.5">

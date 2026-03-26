@@ -2,6 +2,20 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowLeftIcon,
+  BellIcon,
+  CheckBadgeIcon,
+  ShieldCheckIcon,
+  SparklesIcon,
+  WalletIcon as WalletOutlineIcon,
+} from "@heroicons/react/24/outline";
+import {
+  MegaphoneIcon,
+  ShieldCheckIcon as ShieldCheckSolidIcon,
+  UserPlusIcon,
+  WalletIcon as WalletSolidIcon,
+} from "@heroicons/react/24/solid";
 import { useAuthStore } from "@/stores/auth-store";
 import { PageLoader } from "@/components/ui";
 
@@ -43,116 +57,32 @@ interface NotificationGroup {
 }
 
 function ArrowBackIcon() {
-  return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M19 12H5" />
-      <path d="M12 19l-7-7 7-7" />
-    </svg>
-  );
+  return <ArrowLeftIcon className="h-6 w-6" aria-hidden />;
 }
 
 function DoneAllIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M2 12l5 5L22 4" />
-      <path d="M9 12l5 5" />
-    </svg>
-  );
+  return <CheckBadgeIcon className="h-[18px] w-[18px]" aria-hidden />;
 }
 
 function WalletIcon({ filled }: { filled?: boolean }) {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill={filled ? "currentColor" : "none"}
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M20 12V8a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4" />
-      <path d="M20 12h-6a2 2 0 1 0 0 4h6" />
-    </svg>
-  );
+  const Icon = filled ? WalletSolidIcon : WalletOutlineIcon;
+  return <Icon className="h-[22px] w-[22px]" aria-hidden />;
 }
 
 function CampaignIcon() {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden
-    >
-      <path d="M18 11.5V7l-4 2.5v-5C14 3.12 12.88 2 11.5 2S9 3.12 9 4.5v7c0 1.38 1.12 2.5 2.5 2.5S14 12.88 14 11.5v-.1L18 14v-2.5zm-6.5 1c-.83 0-1.5-.67-1.5-1.5v-7C10 3.67 10.67 3 11.5 3S13 3.67 13 4.5v7c0 .83-.67 1.5-1.5 1.5zM3 17h18v2H3zm3.56-3h2.1c.51 2.28 2.54 4 4.95 4s4.44-1.72 4.95-4h2.1C20.07 17.27 17.55 20 14.55 20c-3 0-5.52-2.73-5.99-6H8.44l-1.94-1L8.44 11l-1.82-.99z" />
-    </svg>
-  );
+  return <MegaphoneIcon className="h-[22px] w-[22px]" aria-hidden />;
 }
 
 function PersonAddIcon() {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden
-    >
-      <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V8H4v2H2v2h2v2h2v-2h2v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-    </svg>
-  );
+  return <UserPlusIcon className="h-[22px] w-[22px]" aria-hidden />;
 }
 
 function VerifiedUserIcon() {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden
-    >
-      <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z" />
-    </svg>
-  );
+  return <ShieldCheckSolidIcon className="h-[22px] w-[22px]" aria-hidden />;
 }
 
 function LeafIcon() {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden
-    >
-      <path d="M17 8C8 10 5.9 16.17 3.82 21.34L5.71 22l1-2.3A4.49 4.49 0 0 0 8 20C19 20 22 3 22 3c-1 2-8 2-8 2z" />
-    </svg>
-  );
+  return <SparklesIcon className="h-[22px] w-[22px]" aria-hidden />;
 }
 
 function getNotificationVisual(type: NotificationType): {
@@ -540,7 +470,7 @@ export default function NotifikasiPage() {
 
         {groups.every((group) => group.items.length === 0) && (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <span className="text-5xl">🔔</span>
+            <BellIcon className="h-12 w-12 text-app-body-muted" aria-hidden />
             <p className="text-sm text-app-body-muted font-medium">
               Belum ada notifikasi
             </p>

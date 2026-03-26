@@ -1,10 +1,18 @@
 "use client";
 
+import {
+  BoltIcon,
+  ShoppingBagIcon,
+  ShoppingCartIcon,
+  SparklesIcon,
+  TruckIcon,
+  WrenchScrewdriverIcon,
+} from "@heroicons/react/24/outline";
+
 export interface HorizontalCardItem {
   id: string;
-  /** Optional image URL; top 60% of card. Sample SVG used if not provided. */
   imageUrl?: string | null;
-  /** Optional emoji/icon; shown centered over the gradient when no image. */
+  /** Domain/category marker from data source. */
   icon?: string | null;
   title: string;
   description?: string;
@@ -13,18 +21,39 @@ export interface HorizontalCardItem {
 interface HorizontalCardStripProps {
   title: string;
   items: HorizontalCardItem[];
-  /** Optional link for "Lihat semua" */
   viewAllHref?: string;
 }
 
-/**
- * Square card: top 60% is image (fixed height, full width); below are title and description with ellipsis truncation.
- * Strip is swipeable horizontally (overflow-x-auto).
- */
+function resolveCategoryIcon(icon: string | null | undefined) {
+  switch (icon) {
+    case "??":
+      return ShoppingCartIcon;
+    case "??":
+      return WrenchScrewdriverIcon;
+    case "???":
+      return ShoppingBagIcon;
+    case "??":
+    case "??":
+    case "??":
+      return SparklesIcon;
+    case "?":
+      return BoltIcon;
+    case "??":
+      return WrenchScrewdriverIcon;
+    case "??":
+      return TruckIcon;
+    case "??":
+      return SparklesIcon;
+    default:
+      return SparklesIcon;
+  }
+}
+
 function Card({ item }: { item: HorizontalCardItem }) {
+  const Icon = resolveCategoryIcon(item.icon);
+
   return (
     <article className="flex h-full w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-emerald-100/80 bg-app-surface shadow-[0_10px_26px_-18px_rgba(16,24,40,0.45)]">
-      {/* Image area: fixed 60% height, full width */}
       <div className="relative h-[60%] w-full shrink-0 overflow-hidden rounded-t-2xl bg-white">
         {item.imageUrl ? (
           <img
@@ -35,16 +64,14 @@ function Card({ item }: { item: HorizontalCardItem }) {
         ) : (
           <>
             <div className="absolute inset-0 bg-white" />
-            {item.icon && (
-              <span
-                className="absolute inset-0 flex items-center justify-center"
-                aria-hidden
-              >
-                <span className="flex h-14 w-14 items-center justify-center rounded-full border border-black/5 bg-white text-3xl shadow-[0_6px_18px_-12px_rgba(15,23,42,0.35)]">
-                  {item.icon}
-                </span>
+            <span
+              className="absolute inset-0 flex items-center justify-center"
+              aria-hidden
+            >
+              <span className="flex h-14 w-14 items-center justify-center rounded-full border border-black/5 bg-white text-3xl shadow-[0_6px_18px_-12px_rgba(15,23,42,0.35)]">
+                <Icon className="h-8 w-8 text-app-primary" />
               </span>
-            )}
+            </span>
           </>
         )}
       </div>
@@ -96,7 +123,6 @@ export function HorizontalCardStrip({
               <Card item={item} />
             </a>
           ))}
-          {/* Spacer so last card isn't flush to edge */}
           <div className="w-px shrink-0" aria-hidden />
         </div>
       </div>

@@ -2,6 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowsRightLeftIcon,
+  BriefcaseIcon,
+  BuildingLibraryIcon,
+  CubeIcon,
+  DocumentTextIcon,
+  ShoppingCartIcon,
+} from "@heroicons/react/24/outline";
 import { useAuthStore } from "@/stores/auth-store";
 import { PageLoader } from "@/components/ui";
 
@@ -111,13 +119,13 @@ const CATEGORY_COLORS: Record<CategoryType, string> = {
   lainnya: "bg-slate-100 text-slate-600",
 };
 
-const CATEGORY_ICONS: Record<CategoryType, string> = {
-  gaji: "💼",
-  belanja: "🛒",
-  tagihan: "📄",
-  tabungan: "🏦",
-  transfer: "↔️",
-  lainnya: "📦",
+const CATEGORY_ICONS: Record<CategoryType, React.ComponentType<{ className?: string }>> = {
+  gaji: BriefcaseIcon,
+  belanja: ShoppingCartIcon,
+  tagihan: DocumentTextIcon,
+  tabungan: BuildingLibraryIcon,
+  transfer: ArrowsRightLeftIcon,
+  lainnya: CubeIcon,
 };
 
 function formatRupiah(value: number) {
@@ -368,6 +376,7 @@ export default function DompetPage() {
           ) : (
             filteredTransactions.map((tx) => {
               const isIncome = tx.type === "income";
+              const CategoryIcon = CATEGORY_ICONS[tx.category];
               return (
                 <article
                   key={tx.id}
@@ -376,7 +385,7 @@ export default function DompetPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-3">
                       <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-base ${CATEGORY_COLORS[tx.category]}`}>
-                        {CATEGORY_ICONS[tx.category]}
+                        <CategoryIcon className="h-5 w-5" aria-hidden />
                       </div>
                       <div className="min-w-0">
                         <h3 className="truncate text-sm font-bold text-app-title">{tx.title}</h3>
@@ -415,3 +424,5 @@ export default function DompetPage() {
     </main>
   );
 }
+
+

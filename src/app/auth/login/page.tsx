@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@nextui-org/react";
+import { KeyIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
 import { OtpInput } from "@/components/auth/otp-input";
 import { useAuthStore } from "@/stores/auth-store";
@@ -124,18 +125,7 @@ export default function LoginPage() {
         {/* Brand */}
         <div className="mb-8 text-center">
           <div className="auth-login-logo mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-app-primary text-white shadow-lg shadow-app-primary/30">
-            <svg
-              className="h-8 w-8"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-            </svg>
+            <KeyIcon className="h-8 w-8" aria-hidden />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-app-title sm:text-[1.75rem]">
             {step === 1 ? "Masuk" : "Masukkan PIN"}
@@ -248,13 +238,7 @@ export default function LoginPage() {
       {/* Footer trust line */}
       <p className="mt-6 flex items-center gap-1.5 text-xs text-app-body-muted">
         <span className="auth-login-lock inline-flex h-4 w-4 items-center justify-center rounded-full bg-app-primary-muted/50 text-app-primary">
-          <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
-            <path
-              fillRule="evenodd"
-              d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-              clipRule="evenodd"
-            />
-          </svg>
+          <LockClosedIcon className="h-2.5 w-2.5" aria-hidden />
         </span>
         Encrypted by Supabase
       </p>

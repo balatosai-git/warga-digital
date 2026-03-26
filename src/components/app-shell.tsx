@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { BottomNav } from "@/components/nav/BottomNav";
 
-const BOTTOM_NAV_ROUTES = ["/landing", "/organisasi", "/dompet", "/kas-rt", "/profil"];
+const BOTTOM_NAV_ROUTES = ["/landing", "/organisasi", "/dompet", "/kas-rt", "/profil", "/admin"];
 
 interface AppShellProps {
   children: React.ReactNode;
