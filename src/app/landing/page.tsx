@@ -139,7 +139,7 @@ export default function LandingPage() {
         profilePictureUrl={headerProfile?.profilePictureUrl}
         blokRumah={headerProfile?.blokRumah ?? "Blok —"}
         saldo="Rp 0"
-        onNotificationPress={() => {}}
+        onNotificationPress={() => router.push("/notifikasi")}
       />
 
       <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
