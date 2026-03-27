@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDownTrayIcon, FunnelIcon } from "@heroicons/react/24/outline";
 import { useAuthStore } from "@/stores/auth-store";
@@ -13,6 +13,15 @@ interface TransactionAttachment {
   file_name: string;
   url: string;
   mime_type: string | null;
+}
+
+interface KasRtCategory {
+  id: string;
+  name: string;
+  applies_to: "income" | "expense" | "both";
+  title_template: string;
+  desc_template: string;
+  sort_order: number;
 }
 
 interface TransactionItem {
@@ -32,7 +41,7 @@ interface TransactionItem {
 
 interface KasRtFormState {
   type: TransactionType;
-  category: string;
+  categoryId: string;
   amount: string;
   date: string;
   reference: string;
@@ -67,16 +76,27 @@ function getMonthNameIndonesian(date: Date): string {
   return date.toLocaleString("id-ID", { month: "long" });
 }
 
+/**
+ * Replace {bulan} and {blok} placeholders in a template string.
+ */
+function applyTemplate(
+  template: string,
+  vars: { bulan: string; blok: string },
+): string {
+  return template
+    .replace(/\{bulan\}/g, vars.bulan)
+    .replace(/\{blok\}/g, vars.blok);
+}
+
 function getDefaultKasRtForm(now: Date): KasRtFormState {
-  const monthName = getMonthNameIndonesian(now);
   return {
     type: "income",
-    category: "IPL",
+    categoryId: "",
     amount: "120000",
     date: toDateInputValue(now),
     reference: "",
-    title: `IPL Bulan ${monthName}`,
-    details: `Pembayaran IPL untuk blok  periode ${monthName}`,
+    title: "",
+    details: "",
   };
 }
 
@@ -84,16 +104,24 @@ export default function KasRTPage() {
   const now = new Date();
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  // ── Filter state ────────────────────────────────────────────────────────────
   const [typeFilter, setTypeFilter] = useState<"all" | TransactionType>("all");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState(toDateInputValue(now));
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+  // ── Pull-to-refresh ─────────────────────────────────────────────────────────
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
   const [refreshedAt, setRefreshedAt] = useState(now);
+
+  // ── Transaction list ─────────────────────────────────────────────────────────
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
+
+  // ── Download modal ───────────────────────────────────────────────────────────
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [downloadStartDate, setDownloadStartDate] = useState("");
   const [downloadEndDate, setDownloadEndDate] = useState(toDateInputValue(now));
@@ -101,6 +129,8 @@ export default function KasRTPage() {
   const [downloadBlock, setDownloadBlock] = useState("");
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  // ── Form state ───────────────────────────────────────────────────────────────
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -112,6 +142,10 @@ export default function KasRTPage() {
   const [form, setForm] = useState<KasRtFormState>(() =>
     getDefaultKasRtForm(now),
   );
+
+  // ── Categories ───────────────────────────────────────────────────────────────
+  const [categories, setCategories] = useState<KasRtCategory[]>([]);
+
   /** Server-derived: only true when user has role permission; used to render Catat Transaksi. */
   const [canSubmitTransaction, setCanSubmitTransaction] = useState(false);
   /** True until the first transaction load completes (used for full-page loading spinner). */
@@ -141,6 +175,22 @@ export default function KasRTPage() {
     return () => window.clearTimeout(timeoutId);
   }, [successMessage]);
 
+  // ── Derived: categories filtered to the current form type ───────────────────
+  const visibleCategories = useMemo(
+    () =>
+      categories.filter(
+        (c) => c.applies_to === form.type || c.applies_to === "both",
+      ),
+    [categories, form.type],
+  );
+
+  // ── All unique category names (for filter/download dropdowns) ────────────────
+  const allCategoryNames = useMemo(
+    () => Array.from(new Set(categories.map((c) => c.name))).sort(),
+    [categories],
+  );
+
+  // ── Totals ──────────────────────────────────────────────────────────────────
   const totals = useMemo(() => {
     const balance = transactions.reduce((sum, tx) => {
       return tx.type === "income" ? sum + tx.amount : sum - tx.amount;
@@ -176,6 +226,7 @@ export default function KasRTPage() {
     return { balance, thisMonthNet, deltaFromPrevious };
   }, [now, transactions]);
 
+  // ── Filtered transaction list ────────────────────────────────────────────────
   const filteredTransactions = useMemo(() => {
     return transactions
       .filter((tx) => {
@@ -200,7 +251,10 @@ export default function KasRTPage() {
       });
   }, [transactions, typeFilter, categoryFilter, startDate, endDate]);
 
-  const isStep1Valid = form.type === "income" || form.type === "expense";
+  // ── Validation ───────────────────────────────────────────────────────────────
+  const isStep1Valid =
+    (form.type === "income" || form.type === "expense") &&
+    form.categoryId.length > 0;
   const isStep2Valid = useMemo(() => {
     const amountNumber = Number(form.amount);
     return (
@@ -213,65 +267,85 @@ export default function KasRTPage() {
   const isStep3Valid = form.title.trim().length > 0;
   const isFormValid = isStep1Valid && isStep2Valid && isStep3Valid;
 
+  // ── Data loaders ─────────────────────────────────────────────────────────────
   async function loadTransactions() {
     try {
       const url = categoryFilter.trim()
         ? `/api/kas-rt/transactions?category=${encodeURIComponent(categoryFilter.trim())}`
         : "/api/kas-rt/transactions";
-      const response = await fetch(url);
-      if (!response.ok) {
-        // eslint-disable-next-line no-console
-        console.error("[Kas RT] Gagal memuat transaksi", response.statusText);
-        return;
-      }
+      const response = await apiFetch(url);
+      if (!response.ok) return;
       const data = (await response.json()) as TransactionItem[];
       setTransactions(data);
-      setRefreshedAt(new Date());
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error("[Kas RT] Error memuat transaksi", error);
+    } catch {
+      // silently ignore network errors on initial load
     }
   }
 
-  const refreshData = async () => {
-    setIsRefreshing(true);
-    await loadTransactions();
-    setIsRefreshing(false);
-    setPullDistance(0);
-    setRefreshedAt(new Date());
-  };
-
-  const handleDownloadReport = async () => {
-    if (isDownloading) return;
-
-    if (!downloadStartDate || !downloadEndDate) {
-      setDownloadError("Silakan pilih rentang tanggal laporan.");
-      return;
+  const loadCategories = useCallback(async () => {
+    try {
+      const response = await apiFetch("/api/kas-rt/categories");
+      if (!response.ok) return;
+      const data = (await response.json()) as KasRtCategory[];
+      setCategories(data);
+    } catch {
+      // silently ignore; form falls back to empty list
     }
+  }, []);
 
-    setDownloadError(null);
+  const refreshData = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await loadTransactions();
+      setRefreshedAt(new Date());
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    async function init() {
+      try {
+        const permRes = await apiFetch("/api/kas-rt/permissions");
+        if (permRes.ok) {
+          const perm = (await permRes.json()) as {
+            canSubmitTransaction?: boolean;
+          };
+          setCanSubmitTransaction(perm.canSubmitTransaction === true);
+        }
+      } catch {
+        // ignore
+      }
+      await Promise.all([loadTransactions(), loadCategories()]);
+      setIsInitialLoading(false);
+    }
+    void init();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Download report ──────────────────────────────────────────────────────────
+  const handleDownloadReport = async () => {
     setIsDownloading(true);
-
+    setDownloadError(null);
     try {
       const params = new URLSearchParams();
-      params.set("startDate", downloadStartDate);
-      params.set("endDate", downloadEndDate);
-      if (downloadCategory.trim()) {
+      if (downloadStartDate) params.set("start", downloadStartDate);
+      if (downloadEndDate) params.set("end", downloadEndDate);
+      if (downloadCategory.trim())
         params.set("category", downloadCategory.trim());
-      }
-      if (downloadBlock.trim()) {
-        params.set("block", downloadBlock.trim());
-      }
+      if (downloadBlock.trim()) params.set("block", downloadBlock.trim());
 
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/kas-rt/transactions/report?${params.toString()}`,
       );
       if (!response.ok) {
-        throw new Error("Gagal mengunduh laporan kas RT.");
+        const err = (await response.json().catch(() => ({}))) as {
+          message?: string;
+        };
+        throw new Error(err.message ?? "Gagal mengunduh laporan.");
       }
 
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
       const safeStart = downloadStartDate || "awal";
@@ -280,70 +354,140 @@ export default function KasRTPage() {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(url);
-
+      URL.revokeObjectURL(url);
       setIsDownloadModalOpen(false);
     } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error("[Kas RT] Gagal mengunduh laporan", error);
       setDownloadError(
-        error instanceof Error
-          ? error.message
-          : "Terjadi kesalahan saat mengunduh laporan. Coba lagi nanti.",
+        error instanceof Error ? error.message : "Terjadi kesalahan.",
       );
     } finally {
       setIsDownloading(false);
     }
   };
 
-  useEffect(() => {
-    void loadTransactions().finally(() => setIsInitialLoading(false));
-  }, [categoryFilter]);
+  // ── Permission check (canSubmit) is fetched inside init above ────────────────
+  // kept as no-op here to avoid unused var lint
 
-  useEffect(() => {
-    if (!hasMounted || !isAuthenticated) return;
-    apiFetch("/api/kas-rt/permissions", { credentials: "include" })
-      .then((res) => res.json())
-      .then((data: { canSubmitTransaction?: boolean }) => {
-        setCanSubmitTransaction(Boolean(data?.canSubmitTransaction));
-      })
-      .catch(() => setCanSubmitTransaction(false));
-  }, [hasMounted, isAuthenticated]);
-
-  const onTouchStart: React.TouchEventHandler<HTMLDivElement> = (event) => {
-    const target = event.currentTarget;
-    if (target.scrollTop === 0) {
-      setTouchStartY(event.touches[0]?.clientY ?? null);
-    }
+  // ── Pull-to-refresh touch handlers ──────────────────────────────────────────
+  const onTouchStart = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button, a, input, select, textarea, details")) return;
+    setTouchStartY(e.touches[0].clientY);
   };
 
-  const onTouchMove: React.TouchEventHandler<HTMLDivElement> = (event) => {
-    if (touchStartY == null) {
-      return;
-    }
-    const target = event.currentTarget;
-    if (target.scrollTop > 0) {
+  const onTouchMove = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button, a, input, select, textarea, details")) return;
+    if (touchStartY == null) return;
+    const el = e.currentTarget as HTMLElement;
+    if (el.scrollTop > 0) {
       setTouchStartY(null);
       setPullDistance(0);
       return;
     }
-    const currentY = event.touches[0]?.clientY ?? touchStartY;
+    const currentY = e.touches[0].clientY;
     const distance = Math.max(0, currentY - touchStartY);
-    setPullDistance(Math.min(88, distance * 0.45));
+    setPullDistance(Math.min(distance, 80));
   };
 
-  const onTouchEnd: React.TouchEventHandler<HTMLDivElement> = () => {
-    if (pullDistance >= 64 && !isRefreshing) {
-      refreshData();
-    } else {
-      setPullDistance(0);
+  const onTouchEnd = () => {
+    if (pullDistance > 48) {
+      void refreshData();
     }
+    setPullDistance(0);
     setTouchStartY(null);
+  };
+
+  // ── Form helpers ─────────────────────────────────────────────────────────────
+
+  /**
+   * Called when the user selects a category from the dropdown.
+   * Auto-fills title and details from the category's templates.
+   * {bulan} is resolved immediately; {blok} uses the current reference value (or "-").
+   */
+  const handleCategoryChange = (categoryId: string) => {
+    const monthName = getMonthNameIndonesian(new Date());
+    const blok = form.reference.trim() || "-";
+    const selected = categories.find((c) => c.id === categoryId);
+    if (selected) {
+      setForm((prev) => ({
+        ...prev,
+        categoryId,
+        title: applyTemplate(selected.title_template, {
+          bulan: monthName,
+          blok,
+        }),
+        details: applyTemplate(selected.desc_template, {
+          bulan: monthName,
+          blok,
+        }),
+      }));
+    } else {
+      setForm((prev) => ({ ...prev, categoryId: "" }));
+    }
+  };
+
+  /**
+   * Called when the user toggles income/expense.
+   * If the currently selected category doesn't apply to the new type, it is cleared.
+   */
+  const handleTypeChange = (type: TransactionType) => {
+    setForm((prev) => {
+      const selected = categories.find((c) => c.id === prev.categoryId);
+      const stillValid =
+        selected &&
+        (selected.applies_to === type || selected.applies_to === "both");
+      return {
+        ...prev,
+        type,
+        categoryId: stillValid ? prev.categoryId : "",
+        title: stillValid ? prev.title : "",
+        details: stillValid ? prev.details : "",
+      };
+    });
+  };
+
+  /**
+   * Re-applies the selected category's templates with the actual block value.
+   * Called when transitioning from Step 2 → Step 3 so {blok} is properly resolved.
+   */
+  const reApplyTemplatesWithBlok = () => {
+    const selected = categories.find((c) => c.id === form.categoryId);
+    if (!selected) return;
+    const monthName = getMonthNameIndonesian(new Date());
+    const blok = form.reference.trim() || "-";
+    setForm((prev) => ({
+      ...prev,
+      title: applyTemplate(selected.title_template, { bulan: monthName, blok }),
+      details: applyTemplate(selected.desc_template, {
+        bulan: monthName,
+        blok,
+      }),
+    }));
   };
 
   const openForm = () => {
     setFormError(null);
-    setForm(getDefaultKasRtForm(new Date()));
+    const defaultForm = getDefaultKasRtForm(new Date());
+
+    // Pre-select the first income category and fill templates
+    const firstCategory = categories.find(
+      (c) => c.applies_to === "income" || c.applies_to === "both",
+    );
+    if (firstCategory) {
+      const monthName = getMonthNameIndonesian(new Date());
+      defaultForm.categoryId = firstCategory.id;
+      defaultForm.title = applyTemplate(firstCategory.title_template, {
+        bulan: monthName,
+        blok: "-",
+      });
+      defaultForm.details = applyTemplate(firstCategory.desc_template, {
+        bulan: monthName,
+        blok: "-",
+      });
+    }
+
+    setForm(defaultForm);
     setFormStep(1);
     setIsFormOpen(true);
   };
@@ -360,6 +504,7 @@ export default function KasRTPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  // ── Submit ───────────────────────────────────────────────────────────────────
   const handleSubmit: React.FormEventHandler<HTMLFormElement> = async (
     event,
   ) => {
@@ -376,6 +521,10 @@ export default function KasRTPage() {
     setFormError(null);
 
     try {
+      // Derive the category name from the selected categoryId
+      const selectedCategory = categories.find((c) => c.id === form.categoryId);
+      const categoryName = selectedCategory?.name ?? null;
+
       const formData = new FormData();
       formData.append("title", form.title.trim());
       formData.append("amount", String(amountNumber));
@@ -383,8 +532,8 @@ export default function KasRTPage() {
       formData.append("date", form.date);
       formData.append("reference", form.reference.trim());
       formData.append("details", form.details.trim());
-      if (form.category.trim()) {
-        formData.append("category", form.category.trim());
+      if (categoryName) {
+        formData.append("category", categoryName);
       }
 
       const files = fileInputRef.current?.files;
@@ -422,7 +571,6 @@ export default function KasRTPage() {
       setAttachmentLabel("Belum ada file dipilih");
       setFormStep(1);
       setIsFormOpen(false);
-      // Auto-refresh list from server and show modern toast
       void refreshData();
       setSuccessMessage("Transaksi kas RT berhasil disimpan.");
     } catch (error) {
@@ -460,6 +608,7 @@ export default function KasRTPage() {
               : "Tarik untuk refresh"}
         </div>
 
+        {/* ── Balance card ─────────────────────────────────────────────────── */}
         <section className="rounded-3xl bg-emerald-600 p-5 text-white shadow-[0_20px_40px_-24px_rgba(16,24,40,0.65)]">
           <p className="text-xs font-medium uppercase tracking-[0.08em] text-emerald-50/90">
             Kas RT 03
@@ -532,6 +681,7 @@ export default function KasRTPage() {
           </div>
         </section>
 
+        {/* ── Filter panel ─────────────────────────────────────────────────── */}
         {isFilterOpen && (
           <div
             id="transaction-filter-panel"
@@ -553,14 +703,19 @@ export default function KasRTPage() {
             </label>
 
             <label className="text-sm font-medium text-app-body">
-              Kategori (teks bebas)
-              <input
-                type="text"
+              Kategori
+              <select
                 value={categoryFilter}
                 onChange={(event) => setCategoryFilter(event.target.value)}
-                placeholder="Filter menurut kategori..."
                 className="mt-1 w-full rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-2 text-sm text-app-body focus:border-emerald-400 focus:outline-none"
-              />
+              >
+                <option value="">Semua kategori</option>
+                {allCategoryNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <div className="grid grid-cols-2 gap-3">
@@ -594,6 +749,7 @@ export default function KasRTPage() {
           })}
         </p>
 
+        {/* ── Transaction list ──────────────────────────────────────────────── */}
         <section
           className="mt-4 space-y-3"
           aria-label="Daftar transaksi kas RT"
@@ -652,7 +808,15 @@ export default function KasRTPage() {
                           className="inline-block h-1 w-1 rounded-full bg-emerald-300"
                           aria-hidden
                         />
-                        <span>{tx.category}</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                            isIncome
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-red-50 text-red-700"
+                          }`}
+                        >
+                          {tx.category}
+                        </span>
                       </>
                     )}
                     {tx.created_by_full_name && (
@@ -720,6 +884,7 @@ export default function KasRTPage() {
         </section>
       </div>
 
+      {/* ── Download modal ──────────────────────────────────────────────────── */}
       {isDownloadModalOpen && (
         <div
           className="fixed inset-0 z-40 flex items-end justify-center bg-black/40"
@@ -785,13 +950,18 @@ export default function KasRTPage() {
 
               <label className="block text-xs font-medium text-app-body">
                 Kategori
-                <input
-                  type="text"
+                <select
                   value={downloadCategory}
                   onChange={(event) => setDownloadCategory(event.target.value)}
-                  placeholder="Biarkan kosong untuk semua kategori"
                   className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-app-body focus:border-emerald-400 focus:outline-none focus-visible:outline-none"
-                />
+                >
+                  <option value="">Semua kategori</option>
+                  {allCategoryNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className="block text-xs font-medium text-app-body">
@@ -834,6 +1004,7 @@ export default function KasRTPage() {
         </div>
       )}
 
+      {/* ── Transaction form modal ──────────────────────────────────────────── */}
       {isFormOpen && (
         <div
           className="fixed inset-0 z-40 flex items-end justify-center bg-black/40"
@@ -875,13 +1046,9 @@ export default function KasRTPage() {
                     key={step}
                     type="button"
                     onClick={() => {
+                      // Re-apply templates with actual blok when jumping to step 3
                       if (step === 3) {
-                        const monthName = getMonthNameIndonesian(new Date());
-                        const blockPart = form.reference.trim() || "-";
-                        setForm((prev) => ({
-                          ...prev,
-                          details: `Pembayaran IPL untuk blok ${blockPart} periode ${monthName}`,
-                        }));
+                        reApplyTemplatesWithBlok();
                       }
                       setFormStep(step);
                     }}
@@ -897,9 +1064,10 @@ export default function KasRTPage() {
                 ))}
               </div>
 
-              {/* Step 1: Pemasukan/Pengeluaran + Kategori */}
+              {/* ── Step 1: Jenis + Kategori ─────────────────────────────── */}
               {formStep === 1 && (
                 <div className="space-y-4 pt-1">
+                  {/* Income / Expense toggle */}
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-app-body">
                       Jenis transaksi
@@ -924,7 +1092,7 @@ export default function KasRTPage() {
                             <button
                               key={value}
                               type="button"
-                              onClick={() => updateFormField("type", value)}
+                              onClick={() => handleTypeChange(value)}
                               className={`min-w-[4.5rem] rounded-2xl px-3 py-1 text-xs font-semibold transition ${activeClasses}`}
                             >
                               {value === "income" ? "Pemasukan" : "Pengeluaran"}
@@ -934,26 +1102,51 @@ export default function KasRTPage() {
                       )}
                     </div>
                   </div>
-                  <label className="block text-xs font-medium text-app-body">
-                    Kategori (teks bebas)
-                    <input
-                      type="text"
-                      value={form.category}
-                      onChange={(e) =>
-                        updateFormField("category", e.target.value)
-                      }
-                      placeholder="Contoh: Iuran, Operasional, Sumbangan"
-                      className={`mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-app-body focus:outline-none focus-visible:outline-none ${
-                        isIncomeForm
-                          ? "border-emerald-200 focus:border-emerald-400"
-                          : "border-red-200 focus:border-red-400"
-                      }`}
-                    />
-                  </label>
+
+                  {/* Category selection */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-app-body">
+                      Kategori{" "}
+                      <span
+                        className={
+                          isIncomeForm ? "text-emerald-500" : "text-red-500"
+                        }
+                      >
+                        *
+                      </span>
+                    </p>
+                    {visibleCategories.length === 0 ? (
+                      <p className="text-xs text-app-body-muted">
+                        Memuat kategori…
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {visibleCategories.map((cat) => {
+                          const isSelected = form.categoryId === cat.id;
+                          return (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => handleCategoryChange(cat.id)}
+                              className={`rounded-2xl border px-3 py-2.5 text-left text-sm font-medium transition active:scale-[0.97] ${
+                                isSelected
+                                  ? isIncomeForm
+                                    ? "border-emerald-500 bg-emerald-50 text-emerald-800 shadow-sm"
+                                    : "border-red-500 bg-red-50 text-red-800 shadow-sm"
+                                  : "border-app-border bg-white text-app-body hover:border-emerald-300"
+                              }`}
+                            >
+                              {cat.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              {/* Step 2: Jumlah, Tanggal, Blok */}
+              {/* ── Step 2: Jumlah, Tanggal, Blok ─────────────────────────── */}
               {formStep === 2 && (
                 <div className="space-y-4 pt-1">
                   <label className="block text-xs font-medium text-app-body">
@@ -1016,16 +1209,16 @@ export default function KasRTPage() {
                 </div>
               )}
 
-              {/* Step 3: Judul, Deskripsi, Lampiran */}
+              {/* ── Step 3: Judul, Deskripsi, Lampiran ────────────────────── */}
               {formStep === 3 && (
                 <div className="space-y-4 pt-1">
                   <label className="block text-xs font-medium text-app-body">
-                    Judul transaksi
+                    Judul transaksi <span className="text-red-500">*</span>
                     <input
                       type="text"
                       value={form.title}
                       onChange={(e) => updateFormField("title", e.target.value)}
-                      placeholder="Contoh: Iuran Bulanan Warga"
+                      placeholder="Contoh: IPL Bulan Juni"
                       className={`mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-app-body focus:outline-none focus-visible:outline-none ${
                         isIncomeForm
                           ? "border-emerald-200 focus:border-emerald-400"
@@ -1092,6 +1285,7 @@ export default function KasRTPage() {
                 <p className="mt-1 text-xs text-red-600">{formError}</p>
               )}
 
+              {/* ── Navigation buttons ─────────────────────────────────────── */}
               <div
                 className={`mt-3 flex items-center justify-between gap-2 border-t pt-3 ${
                   isIncomeForm ? "border-emerald-100/60" : "border-red-100/60"
@@ -1122,13 +1316,9 @@ export default function KasRTPage() {
                   <button
                     type="button"
                     onClick={() => {
+                      // Re-apply templates with actual blok when moving to step 3
                       if (formStep === 2) {
-                        const monthName = getMonthNameIndonesian(new Date());
-                        const blockPart = form.reference.trim() || "-";
-                        setForm((prev) => ({
-                          ...prev,
-                          details: `Pembayaran IPL untuk blok ${blockPart} periode ${monthName}`,
-                        }));
+                        reApplyTemplatesWithBlok();
                       }
                       setFormStep((s) => (s + 1) as 1 | 2 | 3);
                     }}
@@ -1169,6 +1359,7 @@ export default function KasRTPage() {
         </div>
       )}
 
+      {/* ── Success toast ───────────────────────────────────────────────────── */}
       {successMessage && (
         <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
           <div className="pointer-events-auto flex max-w-sm items-center gap-3 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_40px_-20px_rgba(5,46,22,0.85)]">
