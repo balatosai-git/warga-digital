@@ -123,7 +123,9 @@ export default function KasRTPage() {
 
   // ── Download modal ───────────────────────────────────────────────────────────
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const [downloadStartDate, setDownloadStartDate] = useState("");
+  const [downloadStartDate, setDownloadStartDate] = useState(
+    toDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1)),
+  );
   const [downloadEndDate, setDownloadEndDate] = useState(toDateInputValue(now));
   const [downloadCategory, setDownloadCategory] = useState("");
   const [downloadBlock, setDownloadBlock] = useState("");
@@ -327,9 +329,15 @@ export default function KasRTPage() {
     setIsDownloading(true);
     setDownloadError(null);
     try {
+      if (!downloadStartDate || !downloadEndDate) {
+        setDownloadError("Tanggal mulai dan akhir wajib diisi.");
+        setIsDownloading(false);
+        return;
+      }
+
       const params = new URLSearchParams();
-      if (downloadStartDate) params.set("start", downloadStartDate);
-      if (downloadEndDate) params.set("end", downloadEndDate);
+      params.set("start", downloadStartDate);
+      params.set("end", downloadEndDate);
       if (downloadCategory.trim())
         params.set("category", downloadCategory.trim());
       if (downloadBlock.trim()) params.set("block", downloadBlock.trim());
@@ -993,7 +1001,9 @@ export default function KasRTPage() {
                 <button
                   type="button"
                   onClick={handleDownloadReport}
-                  disabled={isDownloading}
+                  disabled={
+                    isDownloading || !downloadStartDate || !downloadEndDate
+                  }
                   className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isDownloading ? "Menyiapkan laporan..." : "Unduh laporan"}
