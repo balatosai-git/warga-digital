@@ -1501,7 +1501,7 @@ export default function KelolRolePage() {
       <div className="flex-1 overflow-y-auto pb-28">
         {/* ── Hero Header ──────────────────────────────────────────────────── */}
         <section
-          className="relative overflow-hidden px-4 pt-12 pb-6 text-white"
+          className="relative overflow-hidden px-4 pt-5 pb-6 text-white"
           style={{
             background: `linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%)`,
           }}
