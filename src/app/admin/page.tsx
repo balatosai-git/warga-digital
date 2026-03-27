@@ -14,6 +14,7 @@ import {
   ChartBarIcon,
   ChevronRightIcon,
   InboxIcon,
+  Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import { ShieldCheckIcon as ShieldCheckSolidIcon } from "@heroicons/react/24/solid";
 import { PageLoader } from "@/components/ui";
@@ -300,10 +301,10 @@ export default function AdminPage() {
       href: "/admin/blok-rumah",
     },
     {
-      label: "Kas RT",
-      sublabel: "Transaksi keuangan",
-      icon: WalletOutlineIcon,
-      href: "/kas-rt",
+      label: "Kategori Kas RT",
+      sublabel: "Kelola kategori transaksi",
+      icon: Squares2X2Icon,
+      href: "/admin/kas-rt-categories",
     },
     {
       label: "Join Request",
@@ -470,7 +471,7 @@ export default function AdminPage() {
             <SectionLabel title="Kelola" />
             <div className="grid grid-cols-2 gap-3">
               {navItems.map((item) => (
-                <NavCard key={item.href} {...item} />
+                <NavCard key={item.label} {...item} />
               ))}
             </div>
           </section>

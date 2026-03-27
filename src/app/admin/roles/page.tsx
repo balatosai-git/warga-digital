@@ -27,6 +27,7 @@ import { PageLoader } from "@/components/ui";
 import { useAuthStore } from "@/stores/auth-store";
 import { hasAdminRoleInProfile } from "@/lib/roles";
 import { apiFetch } from "@/lib/api-client";
+import { DEFAULT_ROLE_WARGA_ID } from "@/lib/constants/seed-ids";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1468,6 +1469,8 @@ export default function KelolRolePage() {
 
   // ── Filtered roles ───────────────────────────────────────────────────────────
   const filteredRoles = roles.filter((r) => {
+    // Exclude default warga role
+    if (r.id === DEFAULT_ROLE_WARGA_ID) return false;
     const q = searchQuery.toLowerCase();
     const matchSearch =
       !q ||
@@ -1479,11 +1482,19 @@ export default function KelolRolePage() {
   });
 
   // ── Derived stats ────────────────────────────────────────────────────────────
-  const totalRoles = roles.length;
-  const systemCount = roles.filter((r) => r.scope === "SYSTEM").length;
-  const tenantCount = roles.filter((r) => r.scope === "TENANT").length;
-  const houseCount = roles.filter((r) => r.scope === "HOUSE").length;
-  const totalMembers = roles.reduce((acc, r) => acc + r.member_count, 0);
+  const totalRoles = roles.filter((r) => r.id !== DEFAULT_ROLE_WARGA_ID).length;
+  const systemCount = roles.filter(
+    (r) => r.scope === "SYSTEM" && r.id !== DEFAULT_ROLE_WARGA_ID,
+  ).length;
+  const tenantCount = roles.filter(
+    (r) => r.scope === "TENANT" && r.id !== DEFAULT_ROLE_WARGA_ID,
+  ).length;
+  const houseCount = roles.filter(
+    (r) => r.scope === "HOUSE" && r.id !== DEFAULT_ROLE_WARGA_ID,
+  ).length;
+  const totalMembers = roles
+    .filter((r) => r.id !== DEFAULT_ROLE_WARGA_ID)
+    .reduce((acc, r) => acc + r.member_count, 0);
 
   // ── Guards ───────────────────────────────────────────────────────────────────
   if (!hasMounted || !isAuthenticated || checkingAccess) {
@@ -1673,7 +1684,12 @@ export default function KelolRolePage() {
                           color: "var(--color-body-muted)",
                         }}
                       >
-                        {roles.filter((r) => r.scope === s).length}
+                        {
+                          roles.filter(
+                            (r) =>
+                              r.scope === s && r.id !== DEFAULT_ROLE_WARGA_ID,
+                          ).length
+                        }
                       </span>
                     )}
                   </button>
@@ -1840,7 +1856,7 @@ export default function KelolRolePage() {
       </div>
 
       {/* ── FAB ──────────────────────────────────────────────────────────── */}
-      <div className="fixed bottom-6 right-4 z-30">
+      <div className="fixed bottom-20 right-4 z-30">
         <button
           type="button"
           onClick={() => {
