@@ -2,34 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSessionFromCookie } from "@/lib/auth/session";
 import { createServerClient } from "@/lib/supabase/server";
 import { DEFAULT_TENANT_ID } from "@/lib/constants/seed-ids";
-
-/** Role IDs allowed to manage roles (RT_ADMIN = 4, RT_BENDAHARA = 8) */
-const ADMIN_ROLE_IDS = [4, 8];
-
-type SupabaseClient = ReturnType<typeof createServerClient>;
-
-async function requireAdmin(supabase: SupabaseClient, userId: string) {
-  const { data: tenantUser } = await supabase
-    .from("tenant_users")
-    .select("id")
-    .eq("tenant_id", DEFAULT_TENANT_ID)
-    .eq("user_id", userId)
-    .eq("status", "ACTIVE")
-    .maybeSingle();
-
-  if (!tenantUser) return null;
-
-  const { data: roleRows } = await supabase
-    .from("tenant_user_roles")
-    .select("role_id")
-    .eq("tenant_user_id", tenantUser.id)
-    .in("role_id", ADMIN_ROLE_IDS)
-    .is("revoked_at", null)
-    .limit(1);
-
-  if (!roleRows || roleRows.length === 0) return null;
-  return tenantUser;
-}
+import { requireAdmin } from "@/lib/auth/admin-guard";
 
 /**
  * GET /api/admin/roles
@@ -105,7 +78,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json().catch(() => ({})) as {
+  const body = (await request.json().catch(() => ({}))) as {
     name?: string;
     description?: string;
     scope?: string;
@@ -113,12 +86,18 @@ export async function POST(request: NextRequest) {
 
   const rawName = body.name?.trim() ?? "";
   if (!rawName) {
-    return NextResponse.json({ error: "Nama role wajib diisi" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Nama role wajib diisi" },
+      { status: 400 },
+    );
   }
 
   const validScopes = ["SYSTEM", "TENANT", "HOUSE"];
   if (!body.scope || !validScopes.includes(body.scope)) {
-    return NextResponse.json({ error: "Scope tidak valid. Pilih SYSTEM, TENANT, atau HOUSE." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Scope tidak valid. Pilih SYSTEM, TENANT, atau HOUSE." },
+      { status: 400 },
+    );
   }
 
   // Normalise to SCREAMING_SNAKE_CASE
@@ -147,5 +126,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ role: { ...role, member_count: 0 } }, { status: 201 });
+  return NextResponse.json(
+    { role: { ...role, member_count: 0 } },
+    { status: 201 },
+  );
 }

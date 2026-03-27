@@ -11,6 +11,8 @@ const FALLBACK_ROLE_WARGA_ID = 1;
 const FALLBACK_ROLE_IDS_CAN_SUBMIT_KAS_RT = [4, 8] as const;
 /** Roles that can manage organisation (e.g. edit structure). Default: RT_ADMIN (4), RT_BENDAHARA (8). */
 const FALLBACK_ROLE_IDS_CAN_MANAGE_ORGANISATION = [4, 8] as const;
+/** Roles that grant access to the admin UI and all /api/admin/* endpoints. Default: RT_ADMIN (4), RW_ADMIN (5). */
+const FALLBACK_ROLE_IDS_ADMIN = [4, 5] as const;
 
 function getTenantId(): string {
   const v = process.env.DEFAULT_TENANT_ID?.trim();
@@ -36,7 +38,10 @@ function getRoleWargaId(): number {
 function getRoleIdsCanSubmitKasRt(): number[] {
   const v = process.env.ROLE_IDS_CAN_SUBMIT_KAS_RT?.trim();
   if (v) {
-    const ids = v.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !Number.isNaN(n));
+    const ids = v
+      .split(",")
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !Number.isNaN(n));
     if (ids.length > 0) return ids;
   }
   return [...FALLBACK_ROLE_IDS_CAN_SUBMIT_KAS_RT];
@@ -45,14 +50,32 @@ function getRoleIdsCanSubmitKasRt(): number[] {
 function getRoleIdsCanManageOrganisation(): number[] {
   const v = process.env.ROLE_IDS_CAN_MANAGE_ORGANISATION?.trim();
   if (v) {
-    const ids = v.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !Number.isNaN(n));
+    const ids = v
+      .split(",")
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !Number.isNaN(n));
     if (ids.length > 0) return ids;
   }
   return [...FALLBACK_ROLE_IDS_CAN_MANAGE_ORGANISATION];
+}
+
+function getRoleIdsAdmin(): number[] {
+  const v = process.env.ROLE_IDS_ADMIN?.trim();
+  if (v) {
+    const ids = v
+      .split(",")
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !Number.isNaN(n));
+    if (ids.length > 0) return ids;
+  }
+  return [...FALLBACK_ROLE_IDS_ADMIN];
 }
 
 export const DEFAULT_TENANT_ID = getTenantId();
 export const DEFAULT_COMMUNITY_ID = getCommunityId();
 export const DEFAULT_ROLE_WARGA_ID = getRoleWargaId();
 export const ROLE_IDS_CAN_SUBMIT_KAS_RT = getRoleIdsCanSubmitKasRt();
-export const ROLE_IDS_CAN_MANAGE_ORGANISATION = getRoleIdsCanManageOrganisation();
+export const ROLE_IDS_CAN_MANAGE_ORGANISATION =
+  getRoleIdsCanManageOrganisation();
+/** Role IDs that grant access to the admin UI and all /api/admin/* endpoints (RT_ADMIN, RT_BENDAHARA). */
+export const ROLE_IDS_ADMIN = getRoleIdsAdmin();

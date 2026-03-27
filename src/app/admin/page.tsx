@@ -19,7 +19,7 @@ import {
 import { ShieldCheckIcon as ShieldCheckSolidIcon } from "@heroicons/react/24/solid";
 import { PageLoader } from "@/components/ui";
 import { useAuthStore } from "@/stores/auth-store";
-import { hasAdminRtRoleInProfile } from "@/lib/roles";
+import { hasAdminRoleInProfile } from "@/lib/roles";
 import { apiFetch } from "@/lib/api-client";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -284,7 +284,7 @@ export default function AdminPage() {
         }
 
         const data = (await res.json()) as ProfileData;
-        if (!hasAdminRtRoleInProfile(data)) {
+        if (!hasAdminRoleInProfile(data)) {
           router.replace("/landing");
           return;
         }

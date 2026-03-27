@@ -94,10 +94,10 @@ function isApiRoute(pathname: string): boolean {
  * ──────────────────────
  * The middleware does NOT check roles — that would require a DB call.
  * Role enforcement for /admin pages is layered:
- *   • Client layer  : admin page fetches /api/profile, checks hasAdminRtRoleInProfile(),
+ *   • Client layer  : admin page fetches /api/profile, checks hasAdminRoleInProfile(),
  *                     redirects non-admins to /landing before any data is shown.
  *   • API layer     : /api/admin/stats (and every other admin API) verifies the
- *                     RT_ADMIN / RT_BENDAHARA role server-side and returns 403.
+ *                     RT_ADMIN / RT_BENDAHARA role server-side via requireAdmin() and returns 403.
  * This means the admin page shell HTML is served to any authenticated user,
  * but no privileged data is ever returned to non-admins.
  */

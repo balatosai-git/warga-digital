@@ -15,7 +15,7 @@ import {
   HomeIcon as HomeSolidIcon,
   UserCircleIcon as UserCircleSolidIcon,
 } from "@heroicons/react/24/solid";
-import { hasAdminRtRoleInProfile } from "@/lib/roles";
+import { hasAdminRoleInProfile } from "@/lib/roles";
 
 const BASE_NAV_ITEMS = [
   { href: "/landing", label: "Beranda", icon: HomeIcon },
@@ -58,7 +58,7 @@ export function BottomNav() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled) return;
-        setIsAdminRt(hasAdminRtRoleInProfile(data));
+        setIsAdminRt(hasAdminRoleInProfile(data));
       })
       .catch(() => {
         if (!cancelled) setIsAdminRt(false);

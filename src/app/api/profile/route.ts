@@ -321,7 +321,18 @@ export async function GET() {
 
     const tenant = firstResidence?.tenant ?? null;
     const community = firstResidence?.community ?? null;
-    const roles = firstResidence?.roles ?? [];
+
+    // Deduplicated union of roles across ALL residences (not just the first one).
+    // A user who lives in multiple houses may hold an admin role in a non-primary
+    // residence; flattening here ensures profile.roles is always complete.
+    const seenRoleIds = new Set<number>();
+    const roles = residences
+      .flatMap((r) => r.roles)
+      .filter((role) => {
+        if (seenRoleIds.has(role.id)) return false;
+        seenRoleIds.add(role.id);
+        return true;
+      });
 
     // Badges (user's earned badges)
     const { data: userBadgeRows } = await supabase

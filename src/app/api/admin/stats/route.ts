@@ -5,9 +5,7 @@ import {
   DEFAULT_TENANT_ID,
   DEFAULT_COMMUNITY_ID,
 } from "@/lib/constants/seed-ids";
-
-/** Role IDs that are allowed to access the admin stats endpoint. */
-const ADMIN_ROLE_IDS = [4, 8]; // RT_ADMIN, RT_BENDAHARA
+import { requireAdmin } from "@/lib/auth/admin-guard";
 
 /** Format a numeric balance as "Rp X,XM" / "Rp X,XJt" / "Rp X.XXX" for the dashboard strip. */
 function formatKasSaldo(amount: number): string {
@@ -52,28 +50,9 @@ export async function GET() {
 
   const supabase = createServerClient();
 
-  /* ── 2. Role guard: must be RT_ADMIN or RT_BENDAHARA ─────────── */
-  const { data: tenantUser } = await supabase
-    .from("tenant_users")
-    .select("id")
-    .eq("tenant_id", DEFAULT_TENANT_ID)
-    .eq("user_id", session.userId)
-    .eq("status", "ACTIVE")
-    .maybeSingle();
-
+  /* ── 2. Role guard: must hold an admin role (RT_ADMIN, RT_BENDAHARA, …) ── */
+  const tenantUser = await requireAdmin(supabase, session.userId);
   if (!tenantUser) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const { data: roleRows } = await supabase
-    .from("tenant_user_roles")
-    .select("role_id")
-    .eq("tenant_user_id", tenantUser.id)
-    .in("role_id", ADMIN_ROLE_IDS)
-    .is("revoked_at", null)
-    .limit(1);
-
-  if (!roleRows || roleRows.length === 0) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -156,7 +135,9 @@ export async function GET() {
     (rows ?? []).reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
 
   const kasIncome = sumAmount(kasIncomeRes.data as { amount: number }[] | null);
-  const kasExpense = sumAmount(kasExpenseRes.data as { amount: number }[] | null);
+  const kasExpense = sumAmount(
+    kasExpenseRes.data as { amount: number }[] | null,
+  );
   const kasBalance = kasIncome - kasExpense;
 
   /* ── 5. Build response ───────────────────────────────────────── */
