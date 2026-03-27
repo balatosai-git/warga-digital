@@ -14,6 +14,7 @@
     "@nextui-org/react": "^2.4.8",
     "@nextui-org/theme": "^2.2.10",
     "@supabase/supabase-js": "^2.47.10",
+    "exceljs": "^4.4.0",
     "framer-motion": "^11.15.0",
     "jose": "^5.9.6",
     "next": "15.0.7",

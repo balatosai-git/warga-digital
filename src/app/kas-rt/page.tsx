@@ -129,6 +129,9 @@ export default function KasRTPage() {
   const [downloadEndDate, setDownloadEndDate] = useState(toDateInputValue(now));
   const [downloadCategory, setDownloadCategory] = useState("");
   const [downloadBlock, setDownloadBlock] = useState("");
+  const [downloadFormat, setDownloadFormat] = useState<"excel" | "pdf">(
+    "excel",
+  );
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -338,6 +341,7 @@ export default function KasRTPage() {
       const params = new URLSearchParams();
       params.set("start", downloadStartDate);
       params.set("end", downloadEndDate);
+      params.set("format", downloadFormat);
       if (downloadCategory.trim())
         params.set("category", downloadCategory.trim());
       if (downloadBlock.trim()) params.set("block", downloadBlock.trim());
@@ -358,7 +362,8 @@ export default function KasRTPage() {
       link.href = url;
       const safeStart = downloadStartDate || "awal";
       const safeEnd = downloadEndDate || "akhir";
-      link.download = `laporan-kas-rt-${safeStart}-sd-${safeEnd}.xlsx`;
+      const ext = downloadFormat === "excel" ? "xlsx" : "pdf";
+      link.download = `laporan-kas-rt-${safeStart}-sd-${safeEnd}.${ext}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -933,6 +938,51 @@ export default function KasRTPage() {
             </div>
 
             <div className="space-y-3">
+              {/* Format selector */}
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-app-body">
+                  Format laporan
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDownloadFormat("excel")}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                      downloadFormat === "excel"
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                        : "border-emerald-100 bg-white text-app-body-muted hover:border-emerald-300"
+                    }`}
+                  >
+                    <svg
+                      className="h-3.5 w-3.5"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                    >
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8.5 19l-1.5-2.7-1.5 2.7H4l2.3-4L4 11h1.6l1.4 2.6L8.4 11H10l-2.3 4 2.3 4H8.5zm4.9 0h-1.5l-2-7h1.5l1.3 4.7 1.3-4.7H16l-2.6 7z" />
+                    </svg>
+                    Excel (.xlsx)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDownloadFormat("pdf")}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                      downloadFormat === "pdf"
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                        : "border-emerald-100 bg-white text-app-body-muted hover:border-emerald-300"
+                    }`}
+                  >
+                    <svg
+                      className="h-3.5 w-3.5"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                    >
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM11.5 18H10v-7h1.5c1.4 0 2.5 1.1 2.5 3.5S12.9 18 11.5 18zm0-5.5H11.5v4h.1c.8 0 1.4-.7 1.4-2s-.7-2-1.5-2zm4 5.5v-7H17c1.1 0 2 .5 2 1.8 0 .8-.4 1.4-1 1.7l1.3 3.5h-1.6l-1.1-3.2H17v3.2h-1.5zm1.5-4.3h.2c.4 0 .8-.2.8-.8s-.4-.7-.8-.7H17v1.5zm-9.5 4.3H6v-7h1.5c.9 0 1.5.6 1.5 1.5 0 .6-.3 1.1-.8 1.3.6.2 1 .8 1 1.5 0 1.1-.7 1.7-1.7 1.7zm-.5-4.2h.3c.3 0 .7-.1.7-.6s-.3-.5-.6-.5H7v1.1zm0 2.6h.4c.5 0 .8-.2.8-.7s-.4-.7-.8-.7H7v1.4z" />
+                    </svg>
+                    PDF (.pdf)
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-xs font-medium text-app-body">
                   Tanggal mulai
