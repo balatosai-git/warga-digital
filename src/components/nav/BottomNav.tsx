@@ -4,14 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BanknotesIcon,
   BuildingLibraryIcon,
   Cog6ToothIcon,
   HomeIcon as HomeOutlineIcon,
   UserCircleIcon,
 } from "@heroicons/react/24/outline";
 import {
-  BanknotesIcon as BanknotesSolidIcon,
   BuildingLibraryIcon as BuildingLibrarySolidIcon,
   Cog6ToothIcon as Cog6ToothSolidIcon,
   HomeIcon as HomeSolidIcon,
@@ -21,19 +19,17 @@ import { hasAdminRtRoleInProfile } from "@/lib/roles";
 
 const BASE_NAV_ITEMS = [
   { href: "/landing", label: "Beranda", icon: HomeIcon },
-  { href: "/dompet", label: "Dompet", icon: DompetIcon },
   { href: "/kas-rt", label: "Kas RT", icon: KasRTIcon },
   { href: "/profil", label: "Profil", icon: ProfilIcon },
 ] as const;
-const ADMIN_NAV_ITEM = { href: "/admin", label: "Admin", icon: AdminIcon } as const;
+const ADMIN_NAV_ITEM = {
+  href: "/admin",
+  label: "Admin",
+  icon: AdminIcon,
+} as const;
 
 function HomeIcon({ active }: { active: boolean }) {
   const Icon = active ? HomeSolidIcon : HomeOutlineIcon;
-  return <Icon className="h-6 w-6" aria-hidden />;
-}
-
-function DompetIcon({ active }: { active: boolean }) {
-  const Icon = active ? BanknotesSolidIcon : BanknotesIcon;
   return <Icon className="h-6 w-6" aria-hidden />;
 }
 
@@ -73,7 +69,9 @@ export function BottomNav() {
     };
   }, []);
 
-  const navItems = isAdminRt ? [...BASE_NAV_ITEMS, ADMIN_NAV_ITEM] : BASE_NAV_ITEMS;
+  const navItems = isAdminRt
+    ? [...BASE_NAV_ITEMS, ADMIN_NAV_ITEM]
+    : BASE_NAV_ITEMS;
 
   return (
     <nav
@@ -81,7 +79,8 @@ export function BottomNav() {
       aria-label="Navigasi utama"
     >
       {navItems.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href || (href === "/landing" && pathname === "/");
+        const active =
+          pathname === href || (href === "/landing" && pathname === "/");
         return (
           <Link
             key={href}
