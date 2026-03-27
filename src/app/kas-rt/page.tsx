@@ -118,6 +118,7 @@ export default function KasRTPage() {
   // ── Filter state ────────────────────────────────────────────────────────────
   const [typeFilter, setTypeFilter] = useState<"all" | TransactionType>("all");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [blockFilter, setBlockFilter] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState(toDateInputValue(now));
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -215,6 +216,19 @@ export default function KasRTPage() {
     [categories],
   );
 
+  // ── All unique block/reference names (for the block filter dropdown) ─────────
+  const allBlockNames = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          transactions
+            .map((t) => t.reference?.trim())
+            .filter((r): r is string => Boolean(r)),
+        ),
+      ).sort(),
+    [transactions],
+  );
+
   // ── Totals ──────────────────────────────────────────────────────────────────
   const totals = useMemo(() => {
     const balance = transactions.reduce((sum, tx) => {
@@ -264,6 +278,12 @@ export default function KasRTPage() {
               .includes(categoryFilter.trim().toLowerCase()))
         )
           return false;
+        if (
+          blockFilter.trim() &&
+          (tx.reference ?? "").trim().toLowerCase() !==
+            blockFilter.trim().toLowerCase()
+        )
+          return false;
         if (startDate && tx.date < startDate) return false;
         if (endDate && tx.date > endDate) return false;
         return true;
@@ -274,7 +294,14 @@ export default function KasRTPage() {
         if (aKey === bKey) return 0;
         return aKey < bKey ? 1 : -1;
       });
-  }, [transactions, typeFilter, categoryFilter, startDate, endDate]);
+  }, [
+    transactions,
+    typeFilter,
+    categoryFilter,
+    blockFilter,
+    startDate,
+    endDate,
+  ]);
 
   // ── Validation ───────────────────────────────────────────────────────────────
   const isStep1Valid =
@@ -819,6 +846,22 @@ export default function KasRTPage() {
                 {allCategoryNames.map((name) => (
                   <option key={name} value={name}>
                     {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm font-medium text-app-body">
+              Blok
+              <select
+                value={blockFilter}
+                onChange={(event) => setBlockFilter(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-2 text-sm text-app-body focus:border-emerald-400 focus:outline-none"
+              >
+                <option value="">Semua blok</option>
+                {allBlockNames.map((blok) => (
+                  <option key={blok} value={blok}>
+                    Blok {blok}
                   </option>
                 ))}
               </select>
