@@ -65,7 +65,9 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ categories: (data ?? []) as KasRtCategoryAdminRow[] });
+  return NextResponse.json({
+    categories: (data ?? []) as KasRtCategoryAdminRow[],
+  });
 }
 
 /**
@@ -92,7 +94,6 @@ export async function POST(request: NextRequest) {
     applies_to?: string;
     title_template?: string;
     desc_template?: string;
-    sort_order?: number;
     is_active?: boolean;
   };
 
@@ -112,7 +113,10 @@ export async function POST(request: NextRequest) {
 
   if (!isValidAppliesTo(body.applies_to)) {
     return NextResponse.json(
-      { error: "Nilai 'berlaku untuk' tidak valid. Pilih income, expense, atau both." },
+      {
+        error:
+          "Nilai 'berlaku untuk' tidak valid. Pilih income, expense, atau both.",
+      },
       { status: 400 },
     );
   }
@@ -120,12 +124,18 @@ export async function POST(request: NextRequest) {
   const titleTemplate = body.title_template?.trim() ?? "";
   const descTemplate = body.desc_template?.trim() ?? "";
 
-  const sortOrder =
-    typeof body.sort_order === "number" && Number.isFinite(body.sort_order)
-      ? Math.round(body.sort_order)
-      : 0;
-
   const isActive = body.is_active !== false; // default true
+
+  const { data: maxRow } = await supabase
+    .from("kas_rt_transaction_categories")
+    .select("sort_order")
+    .eq("tenant_id", DEFAULT_TENANT_ID)
+    .eq("community_id", DEFAULT_COMMUNITY_ID)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const autoSortOrder = ((maxRow?.sort_order as number) ?? 0) + 10;
 
   const { data, error } = await supabase
     .from("kas_rt_transaction_categories")
@@ -136,7 +146,7 @@ export async function POST(request: NextRequest) {
       applies_to: body.applies_to,
       title_template: titleTemplate,
       desc_template: descTemplate,
-      sort_order: sortOrder,
+      sort_order: autoSortOrder,
       is_active: isActive,
     })
     .select(

@@ -201,7 +201,6 @@ function CategoryFormSheet({
   const [descTemplate, setDescTemplate] = useState(
     editing?.desc_template ?? "",
   );
-  const [sortOrder, setSortOrder] = useState(String(editing?.sort_order ?? 10));
   const [isActive, setIsActive] = useState(editing?.is_active ?? true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -220,10 +219,7 @@ function CategoryFormSheet({
   );
   const descPreview = useMemo(() => applyPreview(descTemplate), [descTemplate]);
 
-  const isValid =
-    name.trim().length > 0 &&
-    name.trim().length <= 100 &&
-    Number.isFinite(Number(sortOrder));
+  const isValid = name.trim().length > 0 && name.trim().length <= 100;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -236,7 +232,6 @@ function CategoryFormSheet({
       applies_to: appliesTo,
       title_template: titleTemplate.trim(),
       desc_template: descTemplate.trim(),
-      sort_order: parseInt(sortOrder, 10) || 0,
       is_active: isActive,
     };
 
@@ -547,45 +542,38 @@ function CategoryFormSheet({
               </div>
             </div>
 
-            {/* Sort order + Active */}
-            <div className="flex items-end gap-4">
-              <div className="flex-1">
-                <label className="mb-1.5 block text-xs font-semibold text-app-body">
-                  Urutan Tampil
-                </label>
-                <input
-                  type="number"
-                  value={sortOrder}
-                  onChange={(e) => setSortOrder(e.target.value)}
-                  min={0}
-                  max={9999}
-                  className="w-full rounded-xl border border-[var(--color-input-border)] bg-white px-3.5 py-2.5 text-sm text-app-body outline-none transition focus:border-[var(--color-primary)] focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-primary)_16%,white_84%)]"
-                />
-                <p className="mt-1 text-[10px] text-app-body-muted">
-                  Angka lebih kecil tampil lebih awal
-                </p>
-              </div>
-
-              {/* Active toggle */}
+            {/* Active toggle */}
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-app-body">
+                Status
+              </p>
               <button
                 type="button"
                 onClick={() => setIsActive((v) => !v)}
-                className="mb-[26px] flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-medium transition"
+                className="flex w-full items-center justify-between rounded-xl border px-3.5 py-3 transition"
                 style={
                   isActive
                     ? {
                         borderColor: "var(--color-primary)",
-                        color: "var(--color-primary)",
                         background:
-                          "color-mix(in srgb, var(--color-primary) 8%, white)",
+                          "color-mix(in srgb, var(--color-primary) 6%, white)",
                       }
                     : {
                         borderColor: "var(--color-input-border)",
-                        color: "var(--color-body-muted)",
                         background: "white",
                       }
                 }
               >
+                <span
+                  className="text-sm font-medium"
+                  style={
+                    isActive
+                      ? { color: "var(--color-primary)" }
+                      : { color: "var(--color-body-muted)" }
+                  }
+                >
+                  {isActive ? "Kategori aktif" : "Kategori nonaktif"}
+                </span>
                 <span
                   className={`relative h-5 w-9 rounded-full transition-colors duration-200 ${isActive ? "" : "bg-gray-200"}`}
                   style={isActive ? { background: "var(--color-primary)" } : {}}
@@ -595,9 +583,6 @@ function CategoryFormSheet({
                       isActive ? "translate-x-4" : "translate-x-0.5"
                     }`}
                   />
-                </span>
-                <span className="text-xs">
-                  {isActive ? "Aktif" : "Nonaktif"}
                 </span>
               </button>
             </div>
@@ -746,12 +731,7 @@ function CategoryCard({ category, onEdit, onDelete }: CategoryCardProps) {
   }[category.applies_to];
 
   return (
-    <div
-      className="group relative flex overflow-hidden rounded-2xl bg-app-surface shadow-sm transition hover:shadow-md"
-      style={{
-        animation: "fadeInScale 220ms cubic-bezier(0.22,1,0.36,1) both",
-      }}
-    >
+    <div className="group relative flex overflow-hidden rounded-2xl bg-app-surface shadow-sm transition hover:shadow-md">
       {/* Left accent bar */}
       <div className={`w-1 shrink-0 ${leftBar}`} />
 
@@ -763,9 +743,6 @@ function CategoryCard({ category, onEdit, onDelete }: CategoryCardProps) {
             <ActivePill active={category.is_active} />
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <span className="rounded-lg bg-app-surface-alt px-2 py-0.5 text-[10px] font-mono font-semibold text-app-body-muted">
-              #{category.sort_order}
-            </span>
             <button
               type="button"
               onClick={onEdit}
@@ -1106,8 +1083,8 @@ export default function KasRtCategoriesPage() {
         </div>
       </section>
 
-      {/* ── Scrollable body ─────────────────────────────────────────────────── */}
-      <div className="flex flex-1 min-h-0 flex-col overflow-y-auto px-4 pb-28 pt-4 space-y-4">
+      {/* ── Search + Filter (sticky) ────────────────────────────────────────── */}
+      <div className="relative z-10 shrink-0 bg-app-surface-alt px-4 pb-3 pt-3 space-y-2.5 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.08)]">
         {/* Error banner */}
         {loadError && (
           <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
@@ -1147,7 +1124,7 @@ export default function KasRtCategoriesPage() {
         </div>
 
         {/* Filter pills */}
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
           {filterPills.map((pill) => {
             const active = filterAppliesTo === pill.key;
             return (
@@ -1180,7 +1157,10 @@ export default function KasRtCategoriesPage() {
             );
           })}
         </div>
+      </div>
 
+      {/* ── Scrollable list ─────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto px-4 pb-28 pt-3">
         {/* ── Category list ─────────────────────────────────────────────────── */}
         {loading && !refreshing ? (
           <div className="space-y-3">
@@ -1273,28 +1253,21 @@ export default function KasRtCategoriesPage() {
       </div>
 
       {/* ── FAB ─────────────────────────────────────────────────────────────── */}
-      <button
-        type="button"
-        onClick={openAdd}
-        className="fixed bottom-6 right-1/2 z-30 flex h-14 w-14 translate-x-1/2 items-center justify-center rounded-full text-white shadow-[0_8px_28px_-4px_rgba(0,0,0,0.3)] transition hover:scale-105 hover:shadow-[0_12px_36px_-4px_rgba(0,0,0,0.35)] active:scale-95"
-        style={{
-          background: "var(--color-primary)",
-          maxWidth: "calc(430px - 32px)",
-          right: "16px",
-        }}
-        aria-label="Tambah kategori baru"
-      >
-        <PlusIcon className="h-7 w-7" />
-      </button>
-
-      {/* Limit FAB to app max width */}
-      <style>{`
-        @media (min-width: 430px) {
-          [aria-label="Tambah kategori baru"] {
-            right: calc(50% - 215px + 16px) !important;
-          }
-        }
-      `}</style>
+      <div className="fixed bottom-[4.75rem] right-4 z-30">
+        <button
+          type="button"
+          onClick={openAdd}
+          className="flex items-center gap-2 rounded-2xl px-5 py-3.5 text-sm font-bold text-white transition-all hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+          style={{
+            background: "var(--color-primary)",
+            boxShadow: "0 8px 24px -6px var(--color-primary-shadow)",
+          }}
+          aria-label="Tambah kategori baru"
+        >
+          <PlusIcon className="h-5 w-5" />
+          Tambah
+        </button>
+      </div>
 
       {/* ── Form sheet ──────────────────────────────────────────────────────── */}
       {showFormSheet && (
