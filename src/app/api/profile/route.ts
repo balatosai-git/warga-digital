@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromCookie } from "@/lib/auth/session";
 import { createServerClient } from "@/lib/supabase/server";
 import { DEFAULT_TENANT_ID } from "@/lib/constants/seed-ids";
+import { THEMES } from "@/lib/themes";
 
 /** Format IDR amount as "Rp X.XXX" / "Rp X,XJt" / "Rp X,XM" */
 function formatRupiah(amount: number): string {
@@ -444,14 +445,7 @@ export async function GET() {
 }
 
 /** Valid theme ids for appearance (must match src/lib/themes.ts) */
-const VALID_THEME_IDS = [
-  "green",
-  "blue",
-  "purple",
-  "orange",
-  "teal",
-  "rose",
-] as const;
+const VALID_THEME_IDS = THEMES.map((t) => t.id);
 
 /** Allowed fields for profile update (no wa_number, pin_hash, status) */
 const ALLOWED_KEYS = [
@@ -504,11 +498,7 @@ export async function PATCH(request: NextRequest) {
         } else if (key === "theme_id") {
           if (typeof v !== "string" || !v.trim()) {
             updates[key] = "green";
-          } else if (
-            VALID_THEME_IDS.includes(
-              v.trim() as (typeof VALID_THEME_IDS)[number],
-            )
-          ) {
+          } else if (VALID_THEME_IDS.includes(v.trim())) {
             updates[key] = v.trim();
           } else {
             return NextResponse.json(

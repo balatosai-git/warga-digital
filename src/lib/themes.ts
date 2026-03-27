@@ -183,7 +183,32 @@ const rose: Theme = {
   },
 };
 
-export const THEMES: Theme[] = [green, blue, purple, orange, teal, rose];
+const hitam: Theme = {
+  id: "hitam",
+  name: "Hitam",
+  nameId: "Hitam",
+  colors: {
+    primary: "#1c1c1e",
+    primaryHover: "#000000",
+    primaryMuted: "#ececec",
+    surface: "#ffffff",
+    surfaceAlt: "#f5f5f5",
+    surfaceGradientStart: "#555555",
+    surfaceGradientMid: "#3a3a3a",
+    surfaceGradientEnd: "#ececec",
+    title: "#111111",
+    body: "#2c2c2e",
+    bodyMuted: "#6c6c70",
+    indicatorActive: "#1c1c1e",
+    indicatorInactive: "#e0e0e0",
+    bgGradientStart: "#f8f8f8",
+    bgGradientEnd: "#f0f0f0",
+    inputBorder: "#dcdcdc",
+    primaryShadow: "rgba(28,28,30,0.55)",
+  },
+};
+
+export const THEMES: Theme[] = [green, blue, purple, orange, teal, rose, hitam];
 
 export const DEFAULT_THEME_ID = "green";
 
