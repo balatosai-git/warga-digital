@@ -33,12 +33,14 @@ export async function POST(request: Request) {
       const amountRaw = getString("amount");
       amount = amountRaw != null ? Number(amountRaw) : undefined;
       const typeRaw = getString("type");
-      type = typeRaw === "income" || typeRaw === "expense" ? typeRaw : undefined;
+      type =
+        typeRaw === "income" || typeRaw === "expense" ? typeRaw : undefined;
       date = getString("date") ?? undefined;
       reference = getString("reference");
       details = getString("details");
       const catRaw = getString("category");
-      category = catRaw != null && String(catRaw).trim() ? String(catRaw).trim() : null;
+      category =
+        catRaw != null && String(catRaw).trim() ? String(catRaw).trim() : null;
 
       files = form
         .getAll("attachments")
@@ -59,34 +61,42 @@ export async function POST(request: Request) {
       date = body.date;
       reference = body.reference ?? null;
       details = body.details ?? null;
-      category = body.category != null && String(body.category).trim() ? String(body.category).trim() : null;
+      category =
+        body.category != null && String(body.category).trim()
+          ? String(body.category).trim()
+          : null;
     }
 
     if (!title || typeof title !== "string" || title.trim().length === 0) {
       return NextResponse.json(
         { message: "Judul transaksi wajib diisi." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    if (amount == null || typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    if (
+      amount == null ||
+      typeof amount !== "number" ||
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
       return NextResponse.json(
         { message: "Nominal transaksi tidak valid." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (type !== "income" && type !== "expense") {
       return NextResponse.json(
         { message: "Jenis transaksi tidak valid." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!date || typeof date !== "string") {
       return NextResponse.json(
         { message: "Tanggal transaksi wajib diisi." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -94,7 +104,7 @@ export async function POST(request: Request) {
     if (Number.isNaN(parsedDate.getTime())) {
       return NextResponse.json(
         { message: "Format tanggal tidak valid." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -102,7 +112,7 @@ export async function POST(request: Request) {
     if (!session) {
       return NextResponse.json(
         { message: "Anda harus masuk untuk mencatat transaksi." },
-        { status: 401 }
+        { status: 401 },
       );
     }
     const supabaseAuth = createServerClient();
@@ -114,10 +124,7 @@ export async function POST(request: Request) {
       .eq("status", "ACTIVE")
       .maybeSingle();
     if (!tenantUser) {
-      return NextResponse.json(
-        { message: "Akses ditolak." },
-        { status: 403 }
-      );
+      return NextResponse.json({ message: "Akses ditolak." }, { status: 403 });
     }
     const { data: roleAssignments } = await supabaseAuth
       .from("tenant_user_roles")
@@ -127,8 +134,10 @@ export async function POST(request: Request) {
       .is("revoked_at", null);
     if (!roleAssignments?.length) {
       return NextResponse.json(
-        { message: "Anda tidak memiliki izin untuk mencatat transaksi kas RT." },
-        { status: 403 }
+        {
+          message: "Anda tidak memiliki izin untuk mencatat transaksi kas RT.",
+        },
+        { status: 403 },
       );
     }
 
@@ -138,7 +147,7 @@ export async function POST(request: Request) {
     if (!tenantId || !communityId) {
       return NextResponse.json(
         { message: "Konfigurasi tenant/komunitas tidak ditemukan." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -161,7 +170,7 @@ export async function POST(request: Request) {
         created_by: session.userId,
       })
       .select(
-        "id, title, amount, type, date, reference, details, category, created_at, created_by"
+        "id, title, amount, type, date, reference, details, category, created_at, created_by",
       )
       .single();
 
@@ -169,7 +178,7 @@ export async function POST(request: Request) {
       console.error("[Kas RT] Insert transaction error:", error);
       return NextResponse.json(
         { message: "Gagal menyimpan transaksi kas RT." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -180,10 +189,13 @@ export async function POST(request: Request) {
       .eq("status", "ACTIVE");
 
     if (recipientErr) {
-      console.error("[Kas RT] Fetch notification recipients error:", recipientErr);
+      console.error(
+        "[Kas RT] Fetch notification recipients error:",
+        recipientErr,
+      );
     } else if (recipientRows && recipientRows.length > 0) {
       const uniqueRecipients = Array.from(
-        new Set(recipientRows.map((row) => row.user_id).filter(Boolean))
+        new Set(recipientRows.map((row) => row.user_id).filter(Boolean)),
       );
 
       const notificationRows = uniqueRecipients.map((recipientUserId) => ({
@@ -192,7 +204,10 @@ export async function POST(request: Request) {
         actor_user_id: session.userId,
         type: "KAS_RT",
         priority: "NORMAL",
-        title: type === "income" ? "Pemasukan Kas RT Baru" : "Pengeluaran Kas RT Baru",
+        title:
+          type === "income"
+            ? "Pemasukan Kas RT Baru"
+            : "Pengeluaran Kas RT Baru",
         body: `${title.trim()} - Rp ${Math.round(amount).toLocaleString("id-ID")}`,
         action_url: "/kas-rt",
         entity_table: "kas_rt_transactions",
@@ -235,9 +250,9 @@ export async function POST(request: Request) {
             file.name.includes(".") && file.name.split(".").length > 1
               ? file.name.split(".").pop()
               : "bin";
-          const path = `${data.id}/${Date.now()}-${
-            Math.random().toString(36).slice(2)
-          }.${extension}`;
+          const path = `${data.id}/${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2)}.${extension}`;
 
           const uploadResult = await supabase.storage
             .from(bucketId)
@@ -248,7 +263,7 @@ export async function POST(request: Request) {
           if (uploadResult.error) {
             console.error(
               "[Kas RT] Upload attachment error:",
-              uploadResult.error
+              uploadResult.error,
             );
             continue;
           }
@@ -274,13 +289,17 @@ export async function POST(request: Request) {
         if (attachmentError) {
           console.error(
             "[Kas RT] Insert attachment rows error:",
-            attachmentError
+            attachmentError,
           );
         }
       }
     }
 
-    const attachmentPayload: { file_name: string; url: string; mime_type: string | null }[] = [];
+    const attachmentPayload: {
+      file_name: string;
+      url: string;
+      mime_type: string | null;
+    }[] = [];
     if (files.length > 0 && attachmentsToInsert.length > 0) {
       const bucketId =
         process.env.SUPABASE_BUCKET_KAS_RT ?? "kas-rt-attachments";
@@ -314,7 +333,7 @@ export async function POST(request: Request) {
     console.error("[Kas RT] Unexpected error:", error);
     return NextResponse.json(
       { message: "Terjadi kesalahan saat menyimpan transaksi." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -327,7 +346,7 @@ export async function GET(request: Request) {
     if (!tenantId || !communityId) {
       return NextResponse.json(
         { message: "Konfigurasi tenant/komunitas tidak ditemukan." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -339,10 +358,11 @@ export async function GET(request: Request) {
     let query = supabase
       .from("kas_rt_transactions")
       .select(
-        "id, title, amount, type, date, created_at, created_by, reference, details, category, created_by_user:users!kas_rt_transactions_created_by_fkey(full_name), kas_rt_attachments(file_name, storage_path, mime_type)"
+        "id, title, amount, type, date, created_at, created_by, reference, details, category, created_by_user:users!kas_rt_transactions_created_by_fkey(full_name), kas_rt_attachments(file_name, storage_path, mime_type)",
       )
       .eq("tenant_id", tenantId)
       .eq("community_id", communityId)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false });
 
     if (categoryFilter) {
@@ -356,12 +376,11 @@ export async function GET(request: Request) {
       console.error("[Kas RT] Fetch transactions error:", error);
       return NextResponse.json(
         { message: "Gagal memuat transaksi kas RT." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
-    const bucketId =
-      process.env.SUPABASE_BUCKET_KAS_RT ?? "kas-rt-attachments";
+    const bucketId = process.env.SUPABASE_BUCKET_KAS_RT ?? "kas-rt-attachments";
     const signedUrlExpiresIn = 3600; // 1 hour
 
     const result = await Promise.all(
@@ -373,7 +392,11 @@ export async function GET(request: Request) {
               mime_type: string | null;
             }[])
           : [];
-        const attachments: { file_name: string; url: string; mime_type: string | null }[] = [];
+        const attachments: {
+          file_name: string;
+          url: string;
+          mime_type: string | null;
+        }[] = [];
         for (const att of attachmentsRaw) {
           const { data: signed } = await supabase.storage
             .from(bucketId)
@@ -392,13 +415,14 @@ export async function GET(request: Request) {
           date: row.date as string,
           created_at: row.created_at as string,
           created_by: row.created_by as string | null,
-          created_by_full_name: (row.created_by_user?.full_name as string | null) ?? null,
+          created_by_full_name:
+            (row.created_by_user?.full_name as string | null) ?? null,
           reference: (row.reference as string | null) ?? "",
           details: (row.details as string | null) ?? "",
           category: (row.category as string | null) ?? null,
           attachments,
         };
-      })
+      }),
     );
 
     return NextResponse.json(result);
@@ -407,8 +431,7 @@ export async function GET(request: Request) {
     console.error("[Kas RT] Unexpected GET error:", error);
     return NextResponse.json(
       { message: "Terjadi kesalahan saat memuat transaksi." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

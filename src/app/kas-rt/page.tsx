@@ -4,13 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownTrayIcon,
+  ArrowPathIcon,
   DocumentTextIcon,
+  ExclamationTriangleIcon,
   FunnelIcon,
+  PencilSquareIcon,
   TableCellsIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 import { useAuthStore } from "@/stores/auth-store";
 import { PageLoader } from "@/components/ui";
 import { apiFetch } from "@/lib/api-client";
+import { toast } from "sonner";
 
 type TransactionType = "income" | "expense";
 
@@ -162,6 +167,16 @@ export default function KasRTPage() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   /** Lightweight in-page toast for success notifications. */
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // ── Edit / delete state ─────────────────────────────────────────────────────
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [deletingTx, setDeletingTx] = useState<TransactionItem | null>(null);
+  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
+  // ── Duplicate-check modal ────────────────────────────────────────────────────
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    matches: TransactionItem[];
+    onConfirm: () => void;
+  } | null>(null);
 
   const isIncomeForm = form.type === "income";
 
@@ -510,10 +525,31 @@ export default function KasRTPage() {
     setIsFormOpen(true);
   };
 
-  const closeForm = () => {
+  const openEditForm = useCallback(
+    (tx: TransactionItem) => {
+      setFormError(null);
+      setEditingTxId(tx.id);
+      const matchingCategory = categories.find((c) => c.name === tx.category);
+      setForm({
+        type: tx.type,
+        categoryId: matchingCategory?.id ?? "",
+        amount: String(tx.amount),
+        date: tx.date,
+        reference: tx.reference ?? "",
+        title: tx.title,
+        details: tx.details ?? "",
+      });
+      setFormStep(1);
+      setIsFormOpen(true);
+    },
+    [categories],
+  );
+
+  const closeForm = useCallback(() => {
     if (isSubmitting) return;
     setIsFormOpen(false);
-  };
+    setEditingTxId(null);
+  }, [isSubmitting]);
 
   const updateFormField = <K extends keyof KasRtFormState>(
     key: K,
@@ -543,28 +579,46 @@ export default function KasRTPage() {
       const selectedCategory = categories.find((c) => c.id === form.categoryId);
       const categoryName = selectedCategory?.name ?? null;
 
-      const formData = new FormData();
-      formData.append("title", form.title.trim());
-      formData.append("amount", String(amountNumber));
-      formData.append("type", form.type);
-      formData.append("date", form.date);
-      formData.append("reference", form.reference.trim());
-      formData.append("details", form.details.trim());
-      if (categoryName) {
-        formData.append("category", categoryName);
-      }
+      let response: Response;
 
-      const files = fileInputRef.current?.files;
-      if (files && files.length) {
-        Array.from(files).forEach((file) => {
-          formData.append("attachments", file);
+      if (editingTxId) {
+        // PATCH — edit existing transaction (JSON, no file upload on edit)
+        response = await apiFetch(`/api/kas-rt/transactions/${editingTxId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: form.title.trim(),
+            amount: amountNumber,
+            type: form.type,
+            date: form.date,
+            reference: form.reference.trim() || null,
+            details: form.details.trim() || null,
+            category: categoryName,
+          }),
+        });
+      } else {
+        // POST — new transaction with optional file attachments
+        const formData = new FormData();
+        formData.append("title", form.title.trim());
+        formData.append("amount", String(amountNumber));
+        formData.append("type", form.type);
+        formData.append("date", form.date);
+        formData.append("reference", form.reference.trim());
+        formData.append("details", form.details.trim());
+        if (categoryName) {
+          formData.append("category", categoryName);
+        }
+        const files = fileInputRef.current?.files;
+        if (files && files.length) {
+          Array.from(files).forEach((file) => {
+            formData.append("attachments", file);
+          });
+        }
+        response = await apiFetch("/api/kas-rt/transactions", {
+          method: "POST",
+          body: formData,
         });
       }
-
-      const response = await apiFetch("/api/kas-rt/transactions", {
-        method: "POST",
-        body: formData,
-      });
 
       if (!response.ok) {
         let message = "Gagal menyimpan transaksi.";
@@ -580,7 +634,17 @@ export default function KasRTPage() {
       }
 
       const created = (await response.json()) as TransactionItem;
-      setTransactions((prev) => [created, ...prev]);
+
+      if (editingTxId) {
+        // Update the transaction in place in the list
+        setTransactions((prev) =>
+          prev.map((t) => (t.id === created.id ? { ...t, ...created } : t)),
+        );
+        toast.success("Transaksi berhasil diperbarui.");
+      } else {
+        setTransactions((prev) => [created, ...prev]);
+        toast.success("Transaksi kas RT berhasil disimpan.");
+      }
 
       setForm(getDefaultKasRtForm(new Date()));
       if (fileInputRef.current) {
@@ -589,8 +653,8 @@ export default function KasRTPage() {
       setAttachmentLabel("Belum ada file dipilih");
       setFormStep(1);
       setIsFormOpen(false);
+      setEditingTxId(null);
       void refreshData();
-      setSuccessMessage("Transaksi kas RT berhasil disimpan.");
     } catch (error) {
       if (error instanceof Error) {
         setFormError(error.message);
@@ -601,6 +665,30 @@ export default function KasRTPage() {
       setIsSubmitting(false);
     }
   };
+
+  const handleDeleteTx = useCallback(async () => {
+    if (!deletingTx) return;
+    setIsDeleteConfirming(true);
+    try {
+      const res = await apiFetch(`/api/kas-rt/transactions/${deletingTx.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          message?: string;
+        };
+        toast.error(body.message ?? "Gagal menghapus transaksi.");
+        return;
+      }
+      setTransactions((prev) => prev.filter((t) => t.id !== deletingTx.id));
+      toast.success(`Transaksi "${deletingTx.title}" berhasil dihapus.`);
+      setDeletingTx(null);
+    } catch {
+      toast.error("Gagal terhubung ke server.");
+    } finally {
+      setIsDeleteConfirming(false);
+    }
+  }, [deletingTx]);
 
   if (isInitialLoading) {
     return <PageLoader message="Memuat kas RT..." />;
@@ -795,12 +883,34 @@ export default function KasRTPage() {
                         </p>
                       )}
                     </div>
-                    <p
-                      className={`shrink-0 text-sm font-bold ${isIncome ? "text-emerald-700" : "text-red-600"}`}
-                    >
-                      {isIncome ? "+" : "-"}
-                      {formatRupiah(tx.amount)}
-                    </p>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <p
+                        className={`text-sm font-bold ${isIncome ? "text-emerald-700" : "text-red-600"}`}
+                      >
+                        {isIncome ? "+" : "-"}
+                        {formatRupiah(tx.amount)}
+                      </p>
+                      {canSubmitTransaction && (
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditForm(tx)}
+                            className="flex h-6 w-6 items-center justify-center rounded-lg text-app-body-muted transition hover:bg-emerald-50 hover:text-emerald-700 active:scale-90"
+                            aria-label={`Edit transaksi ${tx.title}`}
+                          >
+                            <PencilSquareIcon className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingTx(tx)}
+                            className="flex h-6 w-6 items-center justify-center rounded-lg text-app-body-muted transition hover:bg-red-50 hover:text-red-600 active:scale-90"
+                            aria-label={`Hapus transaksi ${tx.title}`}
+                          >
+                            <TrashIcon className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-app-body-muted">
@@ -1075,7 +1185,7 @@ export default function KasRTPage() {
                 id="kas-rt-form-title"
                 className="text-base font-bold text-app-title"
               >
-                Transaksi Kas RT
+                {editingTxId ? "Edit Transaksi" : "Transaksi Kas RT"}
               </h2>
               <button
                 type="button"
@@ -1297,39 +1407,45 @@ export default function KasRTPage() {
                   </label>
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-app-body">
-                      Lampiran
+                      {editingTxId
+                        ? "Lampiran (tidak dapat diubah)"
+                        : "Lampiran"}
                     </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        multiple
-                        onChange={(e) => {
-                          const files = e.target.files;
-                          if (!files?.length)
-                            setAttachmentLabel("Belum ada file dipilih");
-                          else if (files.length === 1)
-                            setAttachmentLabel(files[0].name);
-                          else
-                            setAttachmentLabel(`${files.length} file dipilih`);
-                        }}
-                        className="absolute h-0 w-0 opacity-0"
-                        id="kas-rt-attachment-input"
-                      />
-                      <label
-                        htmlFor="kas-rt-attachment-input"
-                        className={`cursor-pointer rounded-xl border-0 px-3 py-1.5 text-xs font-semibold transition ${
-                          isIncomeForm
-                            ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                            : "bg-red-50 text-red-700 hover:bg-red-100"
-                        }`}
-                      >
-                        Pilih file
-                      </label>
-                      <span className="text-xs text-app-body-muted">
-                        {attachmentLabel}
-                      </span>
-                    </div>
+                    {!editingTxId && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          onChange={(e) => {
+                            const files = e.target.files;
+                            if (!files?.length)
+                              setAttachmentLabel("Belum ada file dipilih");
+                            else if (files.length === 1)
+                              setAttachmentLabel(files[0].name);
+                            else
+                              setAttachmentLabel(
+                                `${files.length} file dipilih`,
+                              );
+                          }}
+                          className="absolute h-0 w-0 opacity-0"
+                          id="kas-rt-attachment-input"
+                        />
+                        <label
+                          htmlFor="kas-rt-attachment-input"
+                          className={`cursor-pointer rounded-xl border-0 px-3 py-1.5 text-xs font-semibold transition ${
+                            isIncomeForm
+                              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                              : "bg-red-50 text-red-700 hover:bg-red-100"
+                          }`}
+                        >
+                          Pilih file
+                        </label>
+                        <span className="text-xs text-app-body-muted">
+                          {attachmentLabel}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1369,9 +1485,34 @@ export default function KasRTPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      // Re-apply templates with actual blok when moving to step 3
                       if (formStep === 2) {
                         reApplyTemplatesWithBlok();
+
+                        // Duplicate block+month check (skip when editing same tx)
+                        const formMonth = new Date(form.date).getMonth();
+                        const formYear = new Date(form.date).getFullYear();
+                        const formBlock = form.reference.trim().toLowerCase();
+                        const matches = transactions.filter((tx) => {
+                          if (editingTxId && tx.id === editingTxId)
+                            return false;
+                          const d = new Date(tx.date);
+                          return (
+                            (tx.reference ?? "").trim().toLowerCase() ===
+                              formBlock &&
+                            d.getMonth() === formMonth &&
+                            d.getFullYear() === formYear
+                          );
+                        });
+                        if (matches.length > 0) {
+                          setDuplicateWarning({
+                            matches,
+                            onConfirm: () => {
+                              setDuplicateWarning(null);
+                              setFormStep(3);
+                            },
+                          });
+                          return;
+                        }
                       }
                       setFormStep((s) => (s + 1) as 1 | 2 | 3);
                     }}
@@ -1412,23 +1553,155 @@ export default function KasRTPage() {
         </div>
       )}
 
-      {/* ── Success toast ───────────────────────────────────────────────────── */}
-      {successMessage && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
-          <div className="pointer-events-auto flex max-w-sm items-center gap-3 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_40px_-20px_rgba(5,46,22,0.85)]">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/70 text-xs">
-              ✓
-            </span>
-            <p className="flex-1">{successMessage}</p>
-            <button
-              type="button"
-              onClick={() => setSuccessMessage(null)}
-              className="ml-1 rounded-full p-1 text-emerald-50/80 transition hover:bg-emerald-500/40 hover:text-white"
-            >
-              <span className="sr-only">Tutup notifikasi</span>✕
-            </button>
+      {/* ── Duplicate warning modal ──────────────────────────────────────── */}
+      {duplicateWarning && (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]"
+            style={{ animation: "fadeIn 180ms ease forwards" }}
+            onClick={() => setDuplicateWarning(null)}
+          />
+          <div
+            className="fixed inset-x-4 top-1/2 z-[60] mx-auto max-w-[390px] -translate-y-1/2 overflow-hidden rounded-3xl bg-white shadow-2xl"
+            style={{
+              animation:
+                "fadeInScale 220ms cubic-bezier(0.22,1,0.36,1) forwards",
+            }}
+            role="alertdialog"
+            aria-modal="true"
+          >
+            <div className="flex flex-col items-center px-5 pb-2 pt-6 text-center">
+              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50">
+                <ExclamationTriangleIcon className="h-7 w-7 text-amber-500" />
+              </div>
+              <h3 className="text-base font-bold text-app-title">
+                Transaksi Sudah Ada
+              </h3>
+              <p className="mt-1.5 text-sm text-app-body-muted leading-relaxed">
+                Sudah ada{" "}
+                <span className="font-semibold text-app-body">
+                  {duplicateWarning.matches.length} transaksi
+                </span>{" "}
+                untuk blok{" "}
+                <span className="font-semibold text-app-body">
+                  {form.reference}
+                </span>{" "}
+                pada bulan yang sama.
+              </p>
+            </div>
+
+            {/* Existing transactions list */}
+            <div className="mx-4 mb-4 mt-3 max-h-36 overflow-y-auto rounded-2xl border border-amber-100 bg-amber-50/60">
+              {duplicateWarning.matches.map((tx) => (
+                <div
+                  key={tx.id}
+                  className="flex items-center justify-between border-b border-amber-100/60 px-3 py-2 last:border-0"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-semibold text-app-body">
+                      {tx.title}
+                    </p>
+                    <p className="text-[10px] text-app-body-muted">
+                      {new Date(tx.date).toLocaleDateString("id-ID", {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                      {tx.category ? ` · ${tx.category}` : ""}
+                    </p>
+                  </div>
+                  <span
+                    className={`ml-2 shrink-0 text-xs font-bold ${
+                      tx.type === "income" ? "text-emerald-700" : "text-red-600"
+                    }`}
+                  >
+                    {tx.type === "income" ? "+" : "-"}
+                    {formatRupiah(tx.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2.5 border-t border-emerald-100/60 px-4 py-3.5">
+              <button
+                type="button"
+                onClick={() => setDuplicateWarning(null)}
+                className="flex-1 rounded-2xl border border-emerald-200 py-2.5 text-sm font-semibold text-app-body-muted transition hover:bg-app-surface-alt active:scale-95"
+              >
+                Kembali
+              </button>
+              <button
+                type="button"
+                onClick={duplicateWarning.onConfirm}
+                className="flex-1 rounded-2xl bg-amber-500 py-2.5 text-sm font-bold text-white transition hover:bg-amber-600 active:scale-95"
+              >
+                Tetap Lanjutkan
+              </button>
+            </div>
           </div>
-        </div>
+        </>
+      )}
+
+      {/* ── Delete confirmation modal ─────────────────────────────────────── */}
+      {deletingTx && (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]"
+            style={{ animation: "fadeIn 180ms ease forwards" }}
+            onClick={() => !isDeleteConfirming && setDeletingTx(null)}
+          />
+          <div
+            className="fixed inset-x-4 top-1/2 z-[60] mx-auto max-w-[390px] -translate-y-1/2 overflow-hidden rounded-3xl bg-white shadow-2xl"
+            style={{
+              animation:
+                "fadeInScale 220ms cubic-bezier(0.22,1,0.36,1) forwards",
+            }}
+            role="alertdialog"
+            aria-modal="true"
+          >
+            <div className="flex flex-col items-center px-5 pb-2 pt-6 text-center">
+              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50">
+                <TrashIcon className="h-7 w-7 text-red-500" />
+              </div>
+              <h3 className="text-base font-bold text-app-title">
+                Hapus Transaksi?
+              </h3>
+              <p className="mt-1.5 text-sm text-app-body-muted leading-relaxed">
+                <span className="font-semibold text-app-body">
+                  &ldquo;{deletingTx.title}&rdquo;
+                </span>{" "}
+                akan dihapus. Tindakan ini tidak dapat dibatalkan.
+              </p>
+            </div>
+            <div className="flex gap-2.5 border-t border-red-100/60 px-4 py-3.5">
+              <button
+                type="button"
+                onClick={() => !isDeleteConfirming && setDeletingTx(null)}
+                disabled={isDeleteConfirming}
+                className="flex-1 rounded-2xl border border-gray-200 py-2.5 text-sm font-semibold text-app-body-muted transition hover:bg-app-surface-alt active:scale-95 disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteTx}
+                disabled={isDeleteConfirming}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-600 py-2.5 text-sm font-bold text-white transition hover:bg-red-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isDeleteConfirming ? (
+                  <>
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                    Menghapus…
+                  </>
+                ) : (
+                  <>
+                    <TrashIcon className="h-4 w-4" />
+                    Ya, Hapus
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </main>
   );

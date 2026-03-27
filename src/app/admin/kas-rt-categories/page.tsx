@@ -1160,7 +1160,7 @@ export default function KasRtCategoriesPage() {
       </div>
 
       {/* ── Scrollable list ─────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-4 pb-28 pt-3">
+      <div className="flex-1 overflow-y-auto px-4 py-3">
         {/* ── Category list ─────────────────────────────────────────────────── */}
         {loading && !refreshing ? (
           <div className="space-y-3">
@@ -1265,7 +1265,6 @@ export default function KasRtCategoriesPage() {
           aria-label="Tambah kategori baru"
         >
           <PlusIcon className="h-5 w-5" />
-          Tambah
         </button>
       </div>
 
