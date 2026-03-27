@@ -1,14 +1,23 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Input } from "@nextui-org/react";
 import {
-  PrimaryButton,
-  SecondaryButton,
-  PageLoader,
-  Avatar,
-} from "@/components/ui";
+  ArrowPathIcon,
+  ArrowRightOnRectangleIcon,
+  CameraIcon,
+  CheckIcon,
+  ChevronLeftIcon,
+  ExclamationTriangleIcon,
+  KeyIcon,
+  PencilSquareIcon,
+  PlusIcon,
+  SwatchIcon,
+  UserMinusIcon,
+  UsersIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
+import { Avatar, PageLoader } from "@/components/ui";
 import { OtpInput } from "@/components/auth/otp-input";
 import { useAuthStore } from "@/stores/auth-store";
 import { useAppearanceStore } from "@/stores/appearance-store";
@@ -18,6 +27,8 @@ import {
   setHeaderProfileCookie,
   getHeaderProfileCookie,
 } from "@/lib/header-profile-cookie";
+
+// ─── Interfaces ───────────────────────────────────────────────────────────────
 
 interface FamilyMember {
   userId: string;
@@ -97,6 +108,8 @@ interface ProfileData {
   pendingJoinRequest?: PendingJoinRequestRequester | null;
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const RELATIONSHIP_LABELS: Record<string, string> = {
   OWNER: "Kepala Rumah Tangga",
   FAMILY: "Keluarga",
@@ -104,12 +117,7 @@ const RELATIONSHIP_LABELS: Record<string, string> = {
   CARETAKER: "Penjaga",
 };
 
-const inputClassNames = {
-  label: "text-app-body-muted",
-  input: "text-base text-app-body",
-  inputWrapper:
-    "min-h-12 bg-white border-default-200 data-[hover=true]:bg-white data-[focus=true]:bg-white data-[focus=true]:border-app-primary",
-};
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -124,7 +132,6 @@ function formatDate(iso: string | null): string {
   }
 }
 
-/** For date input value (YYYY-MM-DD) */
 function toDateInputValue(iso: string | null): string {
   if (!iso) return "";
   try {
@@ -136,6 +143,324 @@ function toDateInputValue(iso: string | null): string {
   }
 }
 
+// ─── ConfirmDialog state interface ───────────────────────────────────────────
+
+interface ConfirmDialogState {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger?: boolean;
+  onConfirm: () => Promise<void>;
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function PageHero({
+  breadcrumb,
+  title,
+  onBack,
+  rightSlot,
+}: {
+  breadcrumb: string;
+  title: string;
+  onBack: () => void;
+  rightSlot?: React.ReactNode;
+}) {
+  return (
+    <section
+      className="relative shrink-0 overflow-hidden px-4 pb-5 pt-5 text-white"
+      style={{
+        background:
+          "linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%)",
+      }}
+    >
+      <div
+        className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute -bottom-6 -left-6 h-24 w-24 rounded-full bg-white/10"
+        aria-hidden
+      />
+      <div className="relative z-10 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-90"
+          aria-label="Kembali"
+        >
+          <ChevronLeftIcon className="h-5 w-5 text-white" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
+            {breadcrumb}
+          </p>
+          <h1 className="truncate text-lg font-extrabold leading-tight text-white">
+            {title}
+          </h1>
+        </div>
+        {rightSlot}
+      </div>
+    </section>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+  isLast,
+}: {
+  label: string;
+  value: React.ReactNode;
+  isLast?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center justify-between gap-3 py-2.5 ${
+        !isLast ? "border-b border-[var(--color-input-border)]" : ""
+      }`}
+    >
+      <span className="shrink-0 text-[13px] text-app-body-muted">{label}</span>
+      <span className="text-right text-[13px] font-semibold text-app-title">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function FieldInput({
+  label,
+  id,
+  optional,
+  ...props
+}: {
+  label: string;
+  id: string;
+  optional?: boolean;
+} & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
+      >
+        {label}
+        {optional && (
+          <span className="ml-1 normal-case font-normal text-app-body-muted/70">
+            (opsional)
+          </span>
+        )}
+      </label>
+      <input
+        id={id}
+        className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 outline-none transition-all"
+        style={{ borderColor: "var(--color-input-border)" }}
+        onFocus={(e) => {
+          e.currentTarget.style.borderColor = "var(--color-primary)";
+          e.currentTarget.style.boxShadow =
+            "0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, white 84%)";
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = "var(--color-input-border)";
+          e.currentTarget.style.boxShadow = "none";
+        }}
+        {...props}
+      />
+    </div>
+  );
+}
+
+function ThemeSheet({
+  open,
+  currentId,
+  saving,
+  onSelect,
+  onClose,
+}: {
+  open: boolean;
+  currentId: string;
+  saving: boolean;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+        onClick={saving ? undefined : onClose}
+        aria-hidden
+        style={{ animation: "fadeIn 0.2s ease" }}
+      />
+      <div
+        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-50 w-full rounded-t-[2rem] bg-app-surface shadow-[0_-20px_60px_rgba(0,40,5,0.18)]"
+        style={{
+          maxWidth: "var(--app-max-width)",
+          animation: "sheetUp 0.3s cubic-bezier(0.34,1.4,0.64,1)",
+        }}
+      >
+        <div className="flex justify-center pt-3">
+          <div
+            className="h-1 w-10 rounded-full"
+            style={{ background: "var(--color-input-border)" }}
+          />
+        </div>
+        <div className="px-5 pb-8 pt-3">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-extrabold text-app-title">
+                Tema Warna
+              </h2>
+              <p className="mt-0.5 text-xs text-app-body-muted">
+                Pilih warna tampilan aplikasi
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-9 w-9 items-center justify-center rounded-2xl transition hover:bg-app-surface-alt active:scale-90"
+            >
+              <XMarkIcon className="h-5 w-5 text-app-body-muted" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            {THEMES.map((theme) => {
+              const isActive = theme.id === currentId;
+              return (
+                <button
+                  key={theme.id}
+                  type="button"
+                  onClick={() => !saving && onSelect(theme.id)}
+                  disabled={saving}
+                  className={`relative flex flex-col items-center gap-2.5 rounded-2xl border-2 px-3 py-4 transition active:scale-95 disabled:opacity-60 ${
+                    isActive
+                      ? ""
+                      : "border-[var(--color-input-border)] hover:border-[var(--color-primary-muted)]"
+                  }`}
+                  style={
+                    isActive
+                      ? { borderColor: "var(--color-primary)" }
+                      : undefined
+                  }
+                >
+                  <span
+                    className="h-9 w-9 rounded-full shadow-md"
+                    style={{
+                      background: `linear-gradient(135deg, ${theme.colors.primary}, ${theme.colors.primaryHover})`,
+                    }}
+                    aria-hidden
+                  />
+                  {isActive && (
+                    <span
+                      className="absolute right-2.5 top-2.5 flex h-4 w-4 items-center justify-center rounded-full"
+                      style={{ background: "var(--color-primary)" }}
+                    >
+                      <CheckIcon className="h-2.5 w-2.5 text-white" />
+                    </span>
+                  )}
+                  <span className="text-[11px] font-semibold leading-tight text-app-title">
+                    {theme.nameId}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {saving && (
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <ArrowPathIcon className="h-4 w-4 animate-spin text-app-body-muted" />
+              <p className="text-xs text-app-body-muted">Menyimpan tema...</p>
+            </div>
+          )}
+        </div>
+      </div>
+      <style>{`
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+        @keyframes sheetUp { from{transform:translate(-50%,100%)} to{transform:translate(-50%,0)} }
+      `}</style>
+    </>
+  );
+}
+
+function ConfirmDialog({
+  state,
+  loading,
+  onClose,
+}: {
+  state: ConfirmDialogState | null;
+  loading: boolean;
+  onClose: () => void;
+}) {
+  if (!state) return null;
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+        onClick={loading ? undefined : onClose}
+        aria-hidden
+        style={{ animation: "fadeIn 0.2s ease" }}
+      />
+      <div
+        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2.5rem)] rounded-3xl bg-app-surface p-6 shadow-[0_32px_64px_rgba(0,0,0,0.18)]"
+        style={{
+          maxWidth: "360px",
+          animation: "dialogIn 0.25s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
+        role="dialog"
+        aria-modal="true"
+      >
+        {state.danger && (
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-[1.2rem] bg-red-100">
+            <ExclamationTriangleIcon className="h-7 w-7 text-red-600" />
+          </div>
+        )}
+        <h3 className="text-center text-base font-extrabold text-app-title">
+          {state.title}
+        </h3>
+        <p className="mt-2 text-center text-sm text-app-body-muted leading-relaxed">
+          {state.message}
+        </p>
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="flex-1 rounded-2xl py-3 text-sm font-bold text-app-body transition hover:bg-app-surface-alt active:scale-95 disabled:opacity-50"
+            style={{ background: "var(--color-surface-alt)" }}
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={() => void state.onConfirm()}
+            disabled={loading}
+            className="flex-1 rounded-2xl py-3 text-sm font-bold text-white transition active:scale-95 disabled:opacity-50"
+            style={{
+              background: state.danger ? "#dc2626" : "var(--color-primary)",
+            }}
+          >
+            {loading ? (
+              <span className="flex items-center justify-center gap-1.5">
+                <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                Memproses...
+              </span>
+            ) : (
+              state.confirmLabel
+            )}
+          </button>
+        </div>
+      </div>
+      <style>{`
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+        @keyframes dialogIn { from{opacity:0;transform:translate(-50%,-50%) scale(0.92)} to{opacity:1;transform:translate(-50%,-50%) scale(1)} }
+      `}</style>
+    </>
+  );
+}
+
+// ─── Main Page Component ──────────────────────────────────────────────────────
+
 export default function ProfilePage() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -143,8 +468,14 @@ export default function ProfilePage() {
   const setUser = useAuthStore((s) => s.setUser);
   const themeId = useAppearanceStore((s) => s.themeId);
   const setThemeId = useAppearanceStore((s) => s.setThemeId);
-  const [appearanceDropdownOpen, setAppearanceDropdownOpen] = useState(false);
   const [appearanceSaving, setAppearanceSaving] = useState(false);
+
+  // New overlay state
+  const [themeSheetOpen, setThemeSheetOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(
+    null,
+  );
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   const [hasMounted, setHasMounted] = useState(false);
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -324,62 +655,71 @@ export default function ProfilePage() {
     }
   }, [residences.length, selectedResidenceIndex]);
 
-  const handleTransferOwner = async (newOwnerUserId: string) => {
+  const handleTransferOwner = (newOwnerUserId: string) => {
     if (!houseId) return;
-    if (
-      !confirm(
-        "Jadikan orang ini Kepala Rumah Tangga? Anda akan menjadi anggota keluarga.",
-      )
-    )
-      return;
-    setFamilyActionError(null);
-    setTransferLoadingId(newOwnerUserId);
-    try {
-      const res = await apiFetch("/api/family/transfer-owner", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ houseId, newOwnerUserId }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setFamilyActionError(data.error ?? "Gagal mengalihkan");
-        return;
-      }
-      await refreshProfile();
-    } catch {
-      setFamilyActionError("Terjadi kesalahan");
-    } finally {
-      setTransferLoadingId(null);
-    }
+    const member = currentHouse?.members.find(
+      (m) => m.userId === newOwnerUserId,
+    );
+    setConfirmDialog({
+      title: "Jadikan Kepala Keluarga?",
+      message: `${member?.fullName ?? "Anggota ini"} akan menjadi Kepala Rumah Tangga. Anda akan menjadi anggota keluarga biasa.`,
+      confirmLabel: "Ya, Jadikan",
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        setFamilyActionError(null);
+        try {
+          const res = await apiFetch("/api/family/transfer-owner", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ houseId, newOwnerUserId }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            setFamilyActionError(data.error ?? "Gagal mengalihkan");
+          } else {
+            await refreshProfile();
+          }
+        } catch {
+          setFamilyActionError("Terjadi kesalahan");
+        } finally {
+          setConfirmLoading(false);
+          setConfirmDialog(null);
+        }
+      },
+    });
   };
 
-  const handleRemoveMember = async (memberUserId: string) => {
+  const handleRemoveMember = (memberUserId: string) => {
     if (!houseId) return;
-    if (
-      !confirm(
-        "Keluarkan anggota ini dari rumah? Mereka tidak lagi terhubung dengan rumah ini.",
-      )
-    )
-      return;
-    setFamilyActionError(null);
-    setRemoveLoadingId(memberUserId);
-    try {
-      const res = await apiFetch("/api/family/remove-member", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ houseId, memberUserId }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setFamilyActionError(data.error ?? "Gagal mengeluarkan");
-        return;
-      }
-      await refreshProfile();
-    } catch {
-      setFamilyActionError("Terjadi kesalahan");
-    } finally {
-      setRemoveLoadingId(null);
-    }
+    const member = currentHouse?.members.find((m) => m.userId === memberUserId);
+    setConfirmDialog({
+      title: "Keluarkan Anggota?",
+      message: `${member?.fullName ?? "Anggota ini"} akan dikeluarkan dan tidak lagi terhubung dengan rumah ini.`,
+      confirmLabel: "Ya, Keluarkan",
+      danger: true,
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        setFamilyActionError(null);
+        try {
+          const res = await apiFetch("/api/family/remove-member", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ houseId, memberUserId }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            setFamilyActionError(data.error ?? "Gagal mengeluarkan");
+          } else {
+            await refreshProfile();
+          }
+        } catch {
+          setFamilyActionError("Terjadi kesalahan");
+        } finally {
+          setConfirmLoading(false);
+          setConfirmDialog(null);
+        }
+      },
+    });
   };
 
   const handleAddMemberSubmit = async (e: React.FormEvent) => {
@@ -564,825 +904,129 @@ export default function ProfilePage() {
     }
   };
 
-  if (!hasMounted || !isAuthenticated) {
-    return null;
-  }
+  const handleThemeSelect = useCallback(
+    async (id: string) => {
+      setAppearanceSaving(true);
+      try {
+        const res = await apiFetch("/api/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ theme_id: id }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setSaveError(data.error ?? "Gagal menyimpan tema");
+          return;
+        }
+        setThemeId(id);
+        setProfile((p) => (p ? { ...p, themeId: id } : null));
+        setThemeSheetOpen(false);
+      } catch {
+        setSaveError("Gagal menyimpan tema");
+      } finally {
+        setAppearanceSaving(false);
+      }
+    },
+    [setThemeId],
+  );
 
-  if (loading) {
-    return <PageLoader message="Memuat profil..." />;
-  }
+  // ── Guards ──────────────────────────────────────────────────────────────────
 
-  return (
-    <main
-      className="min-h-full px-4 pb-6 pt-4"
-      style={{
-        background:
-          "linear-gradient(to bottom, var(--color-bg-gradient-start) 0%, var(--color-surface-alt) 100%)",
-      }}
-    >
-      <div className="mx-auto max-w-[400px]">
-        {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50/80 p-4 text-center text-sm text-red-700">
-            {error}
-          </div>
-        )}
+  if (!hasMounted || !isAuthenticated) return null;
+  if (loading) return <PageLoader message="Memuat profil..." />;
 
-        {profile && !isEditing && !isChangingPin && !isManagingFamily && (
-          <>
-            {/* Avatar + name */}
-            <div className="mb-6 flex flex-col items-center">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/heic"
-                className="hidden"
-                onChange={handleAvatarChange}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={avatarLoading}
-                className="group relative mb-3 h-20 w-20 shrink-0 overflow-hidden rounded-full focus:outline-none focus:ring-2 focus:ring-app-primary focus:ring-offset-2"
-                aria-label="Ubah foto profil"
+  // ── Derived values ──────────────────────────────────────────────────────────
+
+  const pendingForCurrentHouse =
+    houseId && profile?.pendingJoinRequests?.length
+      ? profile.pendingJoinRequests.filter((r) => r.houseId === houseId)
+      : (profile?.pendingJoinRequests ?? []);
+
+  // ── View: isEditing ─────────────────────────────────────────────────────────
+
+  if (profile && isEditing) {
+    return (
+      <main className="flex h-full min-h-0 flex-col bg-app-surface-alt">
+        <PageHero
+          breadcrumb="Profil"
+          title="Edit Informasi"
+          onBack={() => {
+            setIsEditing(false);
+            setSaveError(null);
+            setEditFullName(profile.fullName);
+            setEditUsername(profile.username ?? "");
+            setEditEmail(profile.email ?? "");
+            setEditDateOfBirth(toDateInputValue(profile.dateOfBirth));
+          }}
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <form onSubmit={handleSave} className="space-y-4 px-4 pb-10 pt-5">
+            <FieldInput
+              label="Nama Lengkap"
+              id="full-name"
+              value={editFullName}
+              onChange={(e) => setEditFullName(e.target.value)}
+              autoComplete="name"
+              placeholder="Contoh: Budi Santoso"
+            />
+            <FieldInput
+              label="Username"
+              id="username"
+              optional
+              value={editUsername}
+              onChange={(e) => setEditUsername(e.target.value)}
+              autoComplete="username"
+              placeholder="Contoh: budi_santoso"
+            />
+            <FieldInput
+              label="Email"
+              id="email"
+              type="email"
+              optional
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+              autoComplete="email"
+              placeholder="budi@email.com"
+            />
+            <div>
+              <label
+                htmlFor="dob"
+                className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
               >
-                <Avatar
-                  name={profile.fullName}
-                  src={profile.profilePictureUrl}
-                  size={80}
-                />
-                <span
-                  className={`absolute inset-0 flex items-center justify-center rounded-full bg-black/40 transition-opacity ${avatarLoading ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus:opacity-100"}`}
-                >
-                  {avatarLoading ? (
-                    <span className="text-xs font-medium text-white">
-                      Mengunggah...
-                    </span>
-                  ) : (
-                    <span className="text-xs font-medium text-white">
-                      Ubah foto
-                    </span>
-                  )}
+                Tanggal Lahir
+                <span className="ml-1 normal-case font-normal text-app-body-muted/70">
+                  (opsional)
                 </span>
-              </button>
-              {avatarError && (
-                <p className="mb-1 text-center text-sm text-red-600">
-                  {avatarError}
-                </p>
-              )}
-              <h2 className="text-lg font-semibold text-app-title">
-                {profile.fullName}
-              </h2>
-              {profile.username && (
-                <p className="text-sm text-app-body-muted">
-                  @{profile.username}
-                </p>
-              )}
-            </div>
-
-            {/* Residence selector — when user has multiple houses/places (mobile: horizontal scroll) */}
-            {residences.length > 1 && (
-              <div className="mb-4">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                  Pilih lingkungan
-                </p>
-                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none snap-x snap-mandatory">
-                  {residences.map((res, i) => {
-                    const label = [
-                      res.tenant.name,
-                      res.community.name || res.community.code,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ");
-                    const isSelected = i === selectedResidenceIndex;
-                    return (
-                      <button
-                        key={`${res.tenant.id}-${res.house.houseId}`}
-                        type="button"
-                        onClick={() => setSelectedResidenceIndex(i)}
-                        className={`snap-start shrink-0 rounded-full px-4 py-2.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-app-primary/40 ${
-                          isSelected
-                            ? "bg-app-primary text-white shadow-md"
-                            : "bg-default-100 text-app-body hover:bg-default-200"
-                        }`}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          {res.isPrimary && (
-                            <span
-                              className="size-1.5 rounded-full bg-current opacity-80"
-                              aria-hidden
-                            />
-                          )}
-                          <span className="truncate max-w-[140px]">
-                            {label || "Lingkungan"}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Badge, Role, Tenant/Community — top section (for current residence) */}
-            {(profile.badges?.length ?? 0) > 0 ||
-            (currentResidence?.roles?.length ?? 0) > 0 ||
-            currentResidence?.tenant ||
-            currentResidence?.community ? (
-              <section className="mb-6 rounded-xl border border-default-200 bg-white p-4 shadow-sm">
-                <div className="space-y-3">
-                  {profile.badges && profile.badges.length > 0 && (
-                    <div>
-                      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                        Lencana
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {profile.badges.map((badge) => (
-                          <span
-                            key={badge.id}
-                            className="inline-flex size-10 items-center justify-center rounded-full bg-default-100 text-xl transition-transform hover:scale-110"
-                            title={
-                              badge.description
-                                ? `${badge.name}: ${badge.description}`
-                                : badge.name
-                            }
-                          >
-                            {badge.icon}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {currentResidence?.roles &&
-                    currentResidence.roles.length > 0 && (
-                      <div>
-                        <p className="mb-1 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                          Peran di lingkungan ini
-                        </p>
-                        <p className="text-sm font-medium text-app-body">
-                          {currentResidence.roles.map((r) => r.name).join(", ")}
-                        </p>
-                      </div>
-                    )}
-                  {(currentResidence?.tenant ||
-                    currentResidence?.community) && (
-                    <div>
-                      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                        Lingkungan
-                      </p>
-                      <p className="text-sm text-app-body">
-                        {[
-                          currentResidence.tenant?.name,
-                          currentResidence.community?.name ??
-                            currentResidence.community?.code,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </section>
-            ) : null}
-
-            {/* Info cards */}
-            <div className="space-y-3">
-              <section className="rounded-xl border border-default-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                    Informasi akun
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setIsEditing(true)}
-                    className="text-xs font-medium text-app-primary hover:underline focus:outline-none focus:ring-2 focus:ring-app-primary/30 rounded"
-                  >
-                    Edit
-                  </button>
-                </div>
-                <dl className="space-y-2 text-sm">
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-app-body-muted">Nomor WhatsApp</dt>
-                    <dd className="font-medium text-app-body">
-                      {profile.waNumberMasked ?? "—"}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-app-body-muted">Email</dt>
-                    <dd className="font-medium text-app-body">
-                      {profile.email ?? "—"}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-app-body-muted">Tanggal lahir</dt>
-                    <dd className="font-medium text-app-body">
-                      {formatDate(profile.dateOfBirth)}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-app-body-muted">Status</dt>
-                    <dd>
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          profile.status === "ACTIVE"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {profile.status === "ACTIVE" ? "Aktif" : profile.status}
-                      </span>
-                    </dd>
-                  </div>
-                </dl>
-              </section>
-
-              {currentHouse && (
-                <section className="rounded-xl border border-default-200 bg-white shadow-sm overflow-hidden">
-                  <div className="p-4">
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <h3 className="text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                        Rumah
-                      </h3>
-                      {isKepalaKeluarga && (
-                        <button
-                          type="button"
-                          onClick={() => setIsManagingFamily(true)}
-                          className="text-xs font-medium text-app-primary hover:underline focus:outline-none focus:ring-2 focus:ring-app-primary/30 rounded"
-                        >
-                          Edit
-                        </button>
-                      )}
-                    </div>
-                    <dl className="space-y-2 text-sm">
-                      {currentHouse.blok_rumah && (
-                        <div className="flex justify-between gap-2">
-                          <dt className="text-app-body-muted">Blok</dt>
-                          <dd className="font-medium text-app-body">
-                            {currentHouse.blok_rumah}
-                          </dd>
-                        </div>
-                      )}
-                      {currentHouse.address && (
-                        <div>
-                          <dt className="mb-1 text-app-body-muted">Alamat</dt>
-                          <dd className="font-medium text-app-body">
-                            {currentHouse.address}
-                          </dd>
-                        </div>
-                      )}
-                    </dl>
-                  </div>
-                  {currentHouse.members?.length > 0 && (
-                    <div className="border-t border-default-100 bg-default-50/50 px-4 py-3">
-                      <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                        Anggota Keluarga
-                      </h4>
-                      <ul className="space-y-2" role="list">
-                        {currentHouse.members.map((m) => (
-                          <li
-                            key={m.userId}
-                            className="flex items-center gap-3 rounded-lg bg-white py-2 pl-2 pr-3 shadow-sm border border-default-100"
-                          >
-                            <Avatar name={m.fullName} size={36} />
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-app-body">
-                                {m.fullName}
-                              </p>
-                              <p className="flex items-center gap-1.5 text-xs text-app-body-muted">
-                                {m.username && (
-                                  <span className="truncate">
-                                    @{m.username}
-                                  </span>
-                                )}
-                                <span
-                                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                    m.relationship === "OWNER"
-                                      ? "bg-app-primary/20 text-app-primary"
-                                      : "bg-default-200 text-app-body-muted"
-                                  }`}
-                                >
-                                  {RELATIONSHIP_LABELS[m.relationship] ??
-                                    m.relationship}
-                                </span>
-                              </p>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </section>
-              )}
-
-              {(() => {
-                const pendingForCurrentHouse =
-                  houseId && profile.pendingJoinRequests?.length
-                    ? profile.pendingJoinRequests.filter(
-                        (r) => r.houseId === houseId,
-                      )
-                    : (profile.pendingJoinRequests ?? []);
-                return (
-                  currentHouse &&
-                  pendingForCurrentHouse.length > 0 && (
-                    <section className="mt-6 rounded-xl border border-default-200 bg-white shadow-sm overflow-hidden">
-                      <div className="p-4">
-                        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                          Permintaan bergabung
-                        </h3>
-                        {respondError && (
-                          <p className="mb-3 text-sm text-danger">
-                            {respondError}
-                          </p>
-                        )}
-                        <ul className="space-y-3" role="list">
-                          {pendingForCurrentHouse.map((req) => (
-                            <li
-                              key={req.id}
-                              className="flex flex-col gap-2 rounded-lg border border-default-100 bg-default-50/50 p-3"
-                            >
-                              <p className="text-sm font-medium text-app-body">
-                                {req.requesterFullName}
-                              </p>
-                              <p className="text-xs text-app-body-muted">
-                                Blok {req.blokRumah} ·{" "}
-                                {formatDate(req.createdAt)}
-                              </p>
-                              <div className="mt-1 flex gap-2">
-                                <PrimaryButton
-                                  type="button"
-                                  onPress={() =>
-                                    handleRespondToJoinRequest(
-                                      req.id,
-                                      "approve",
-                                    )
-                                  }
-                                  isLoading={respondingRequestId === req.id}
-                                  isDisabled={respondingRequestId !== null}
-                                  className="min-w-20 py-2 text-sm"
-                                >
-                                  Setuju
-                                </PrimaryButton>
-                                <SecondaryButton
-                                  type="button"
-                                  onClick={() =>
-                                    handleRespondToJoinRequest(req.id, "reject")
-                                  }
-                                  disabled={respondingRequestId !== null}
-                                  className="min-w-20 border-red-200 text-red-700 hover:bg-red-50"
-                                >
-                                  Tolak
-                                </SecondaryButton>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </section>
-                  )
-                );
-              })()}
-
-              {!currentHouse && profile.pendingJoinRequest && (
-                <section className="mt-6 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-                  <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-amber-800">
-                    Menunggu persetujuan
-                  </h3>
-                  <p className="text-sm text-amber-900">
-                    Permintaan bergabung ke rumah blok{" "}
-                    {profile.pendingJoinRequest.blokRumah} menunggu persetujuan
-                    pemilik ({profile.pendingJoinRequest.ownerFullName}). Anda
-                    akan dapat mengakses fitur warga setelah disetujui.
-                  </p>
-                </section>
-              )}
-            </div>
-
-            {/* Penampilan / Appearance — single line with Edit dropdown */}
-            <section className="mt-6 rounded-xl border border-default-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                Penampilan
-              </h3>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="text-sm text-app-body-muted">
-                    Warna tema
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-sm font-medium text-app-body">
-                    <span
-                      className="h-4 w-4 shrink-0 rounded-full ring-1 ring-black/10"
-                      style={{
-                        backgroundColor: getTheme(themeId).colors.primary,
-                      }}
-                      aria-hidden
-                    />
-                    {getTheme(themeId).nameId}
-                  </span>
-                </div>
-                <div className="relative shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setAppearanceDropdownOpen((o) => !o)}
-                    disabled={appearanceSaving}
-                    className="rounded-lg border border-default-200 bg-default-50 px-3 py-1.5 text-xs font-medium text-app-primary transition-colors hover:bg-default-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-app-primary/30 disabled:opacity-60"
-                  >
-                    {appearanceDropdownOpen ? "Tutup" : "Edit"}
-                  </button>
-                  {appearanceDropdownOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-10"
-                        aria-hidden
-                        onClick={() => setAppearanceDropdownOpen(false)}
-                      />
-                      <div className="absolute right-0 top-full z-20 mt-1 min-w-[140px] rounded-xl border border-default-200 bg-white py-1 shadow-lg">
-                        {THEMES.map((theme) => (
-                          <button
-                            key={theme.id}
-                            type="button"
-                            onClick={async () => {
-                              setAppearanceSaving(true);
-                              try {
-                                const res = await apiFetch("/api/profile", {
-                                  method: "PATCH",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({ theme_id: theme.id }),
-                                });
-                                const data = await res.json();
-                                if (!res.ok) {
-                                  setSaveError(
-                                    data.error ?? "Gagal menyimpan tema",
-                                  );
-                                  return;
-                                }
-                                setThemeId(theme.id);
-                                setProfile((p) =>
-                                  p ? { ...p, themeId: theme.id } : null,
-                                );
-                                setAppearanceDropdownOpen(false);
-                              } catch {
-                                setSaveError("Gagal menyimpan tema");
-                              } finally {
-                                setAppearanceSaving(false);
-                              }
-                            }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-app-body transition-colors hover:bg-default-100 focus:outline-none focus-visible:bg-default-100"
-                          >
-                            <span
-                              className="h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-black/10"
-                              style={{ backgroundColor: theme.colors.primary }}
-                              aria-hidden
-                            />
-                            {theme.nameId}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            <div className="mt-8 flex flex-col gap-3">
-              <SecondaryButton
-                type="button"
-                onClick={() => setIsChangingPin(true)}
-                className="w-full"
-              >
-                Ubah PIN
-              </SecondaryButton>
-              <SecondaryButton
-                type="button"
-                onClick={handleLogout}
-                className="w-full border-red-200 text-red-700 hover:bg-red-50"
-              >
-                Keluar
-              </SecondaryButton>
-            </div>
-          </>
-        )}
-
-        {profile && isManagingFamily && currentHouse && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-default-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-4 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                Kelola Anggota Keluarga
-              </h3>
-              <p className="mb-4 text-sm text-app-body-muted">
-                Ubah kepala keluarga, keluarkan anggota, atau tambah anggota
-                baru.
-              </p>
-              {familyActionError && (
-                <p className="mb-3 text-sm text-danger">{familyActionError}</p>
-              )}
-              <ul className="space-y-2" role="list">
-                {currentHouse.members.map((m) => (
-                  <li
-                    key={m.userId}
-                    className="flex flex-wrap items-center gap-3 rounded-lg border border-default-100 bg-default-50/50 py-2 pl-2 pr-3"
-                  >
-                    <Avatar name={m.fullName} size={36} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-app-body">
-                        {m.fullName}
-                      </p>
-                      <p className="flex items-center gap-1.5 text-xs text-app-body-muted">
-                        {m.username && (
-                          <span className="truncate">@{m.username}</span>
-                        )}
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                            m.relationship === "OWNER"
-                              ? "bg-app-primary/20 text-app-primary"
-                              : "bg-default-200 text-app-body-muted"
-                          }`}
-                        >
-                          {RELATIONSHIP_LABELS[m.relationship] ??
-                            m.relationship}
-                        </span>
-                      </p>
-                    </div>
-                    {m.userId !== profile.id && m.relationship === "FAMILY" && (
-                      <div className="flex gap-2">
-                        <PrimaryButton
-                          type="button"
-                          onPress={() => handleTransferOwner(m.userId)}
-                          isLoading={transferLoadingId === m.userId}
-                          isDisabled={
-                            transferLoadingId !== null ||
-                            removeLoadingId !== null
-                          }
-                          className="min-w-0 py-2 text-xs"
-                        >
-                          Jadikan Kepala Keluarga
-                        </PrimaryButton>
-                        <SecondaryButton
-                          type="button"
-                          onClick={() => handleRemoveMember(m.userId)}
-                          disabled={
-                            transferLoadingId !== null ||
-                            removeLoadingId !== null
-                          }
-                          className="border-red-200 text-red-700 hover:bg-red-50 text-xs py-1.5 px-3"
-                        >
-                          Keluarkan
-                        </SecondaryButton>
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-4 border-t border-default-200 pt-4">
-                {!showAddMemberForm ? (
-                  <SecondaryButton
-                    type="button"
-                    onClick={() => {
-                      setShowAddMemberForm(true);
-                      setAddMemberError(null);
-                    }}
-                    className="w-full"
-                  >
-                    + Tambah anggota keluarga
-                  </SecondaryButton>
-                ) : (
-                  <form onSubmit={handleAddMemberSubmit} className="space-y-3">
-                    <h4 className="text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                      Tambah anggota baru
-                    </h4>
-                    <Input
-                      label="Nama lengkap"
-                      placeholder="Contoh: Siti Aminah"
-                      value={addMemberFullName}
-                      onValueChange={(v) => {
-                        setAddMemberFullName(v);
-                        setAddMemberError(null);
-                      }}
-                      size="sm"
-                      variant="bordered"
-                      classNames={inputClassNames}
-                      autoComplete="name"
-                    />
-                    <Input
-                      label="Username (opsional)"
-                      placeholder="Contoh: siti_aminah"
-                      value={addMemberUsername}
-                      onValueChange={(v) => setAddMemberUsername(v)}
-                      size="sm"
-                      variant="bordered"
-                      classNames={inputClassNames}
-                      autoComplete="username"
-                    />
-                    <Input
-                      label="Nomor WhatsApp"
-                      placeholder="08xxxxxxxxxx"
-                      value={addMemberWaNumber}
-                      onValueChange={(v) => {
-                        setAddMemberWaNumber(v);
-                        setAddMemberError(null);
-                      }}
-                      size="sm"
-                      variant="bordered"
-                      classNames={inputClassNames}
-                      autoComplete="tel"
-                    />
-                    {addMemberError && (
-                      <p className="text-sm text-danger">{addMemberError}</p>
-                    )}
-                    <div className="flex gap-2">
-                      <SecondaryButton
-                        type="button"
-                        onClick={() => {
-                          setShowAddMemberForm(false);
-                          setAddMemberError(null);
-                        }}
-                        className="flex-1"
-                      >
-                        Batal
-                      </SecondaryButton>
-                      <PrimaryButton
-                        type="submit"
-                        isLoading={addMemberLoading}
-                        isDisabled={addMemberLoading}
-                        className="flex-1"
-                      >
-                        Tambah
-                      </PrimaryButton>
-                    </div>
-                  </form>
-                )}
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <SecondaryButton
-                type="button"
-                onClick={() => {
-                  setIsManagingFamily(false);
-                  setFamilyActionError(null);
-                  setShowAddMemberForm(false);
-                  setAddMemberError(null);
+              </label>
+              <input
+                id="dob"
+                type="date"
+                value={editDateOfBirth}
+                onChange={(e) => setEditDateOfBirth(e.target.value)}
+                className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title outline-none transition-all"
+                style={{ borderColor: "var(--color-input-border)" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-primary)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, white 84%)";
                 }}
-                className="flex-1"
-              >
-                Selesai
-              </SecondaryButton>
-            </div>
-          </div>
-        )}
-
-        {profile && isChangingPin && (
-          <form onSubmit={handleChangePin} className="space-y-4">
-            <div className="rounded-xl border border-default-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-4 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                Ubah PIN
-              </h3>
-              <p className="mb-4 text-sm text-app-body-muted">
-                Masukkan PIN saat ini, lalu PIN baru 4 digit.
-              </p>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-app-body-muted">
-                    PIN saat ini
-                  </label>
-                  <OtpInput
-                    value={currentPin}
-                    onChange={(v) => {
-                      setCurrentPin(v);
-                      setPinError(null);
-                    }}
-                    length={4}
-                    disabled={pinLoading}
-                    error={pinError ?? undefined}
-                    masked
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-app-body-muted">
-                    PIN baru
-                  </label>
-                  <OtpInput
-                    value={newPin}
-                    onChange={(v) => {
-                      setNewPin(v);
-                      setPinError(null);
-                    }}
-                    length={4}
-                    disabled={pinLoading}
-                    masked
-                    autoFocus={false}
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-app-body-muted">
-                    Konfirmasi PIN baru
-                  </label>
-                  <OtpInput
-                    value={confirmNewPin}
-                    onChange={(v) => {
-                      setConfirmNewPin(v);
-                      setPinError(null);
-                    }}
-                    length={4}
-                    disabled={pinLoading}
-                    masked
-                    autoFocus={false}
-                  />
-                </div>
-              </div>
-            </div>
-            {pinError && (
-              <p className="text-center text-sm text-red-600">{pinError}</p>
-            )}
-            <div className="flex gap-3">
-              <SecondaryButton
-                type="button"
-                onClick={() => {
-                  setIsChangingPin(false);
-                  setPinError(null);
-                  setCurrentPin("");
-                  setNewPin("");
-                  setConfirmNewPin("");
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor =
+                    "var(--color-input-border)";
+                  e.currentTarget.style.boxShadow = "none";
                 }}
-                className="flex-1"
-              >
-                Batal
-              </SecondaryButton>
-              <PrimaryButton
-                type="submit"
-                isLoading={pinLoading}
-                isDisabled={
-                  pinLoading ||
-                  currentPin.length !== 4 ||
-                  newPin.length !== 4 ||
-                  confirmNewPin.length !== 4
-                }
-                className="flex-1"
-              >
-                Simpan PIN
-              </PrimaryButton>
+              />
             </div>
-          </form>
-        )}
 
-        {profile && isEditing && (
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="rounded-xl border border-default-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-4 text-xs font-medium uppercase tracking-wider text-app-body-muted">
-                Ubah data
-              </h3>
-              <div className="space-y-4">
-                <Input
-                  label="Nama lengkap"
-                  placeholder="Contoh: Budi Santoso"
-                  value={editFullName}
-                  onValueChange={setEditFullName}
-                  size="md"
-                  variant="bordered"
-                  classNames={inputClassNames}
-                  autoComplete="name"
-                />
-                <Input
-                  label="Username (opsional)"
-                  placeholder="Contoh: budi_santoso"
-                  value={editUsername}
-                  onValueChange={setEditUsername}
-                  size="md"
-                  variant="bordered"
-                  classNames={inputClassNames}
-                  autoComplete="username"
-                />
-                <Input
-                  label="Email (opsional)"
-                  placeholder="budi@email.com"
-                  type="email"
-                  value={editEmail}
-                  onValueChange={setEditEmail}
-                  size="md"
-                  variant="bordered"
-                  classNames={inputClassNames}
-                  autoComplete="email"
-                />
-                <div>
-                  <label
-                    htmlFor="dob"
-                    className="mb-1.5 block text-sm text-app-body-muted"
-                  >
-                    Tanggal lahir (opsional)
-                  </label>
-                  <input
-                    id="dob"
-                    type="date"
-                    value={editDateOfBirth}
-                    onChange={(e) => setEditDateOfBirth(e.target.value)}
-                    className="w-full min-h-12 rounded-xl border border-default-200 bg-white px-3 py-2 text-base text-app-body outline-none transition-colors focus:border-app-primary focus:ring-2 focus:ring-app-primary/20"
-                  />
-                </div>
-              </div>
-            </div>
             {saveError && (
-              <p className="text-center text-sm text-red-600">{saveError}</p>
+              <div className="flex items-start gap-2.5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+                <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                <p className="text-sm text-red-600 leading-snug">{saveError}</p>
+              </div>
             )}
-            <div className="flex gap-3">
-              <SecondaryButton
+
+            <div className="flex gap-2 pt-1">
+              <button
                 type="button"
                 onClick={() => {
                   setIsEditing(false);
@@ -1392,22 +1036,840 @@ export default function ProfilePage() {
                   setEditEmail(profile.email ?? "");
                   setEditDateOfBirth(toDateInputValue(profile.dateOfBirth));
                 }}
-                className="flex-1"
+                className="flex-1 rounded-2xl py-4 text-sm font-bold text-app-body transition hover:bg-app-surface active:scale-95"
+                style={{ background: "var(--color-surface-alt)" }}
               >
                 Batal
-              </SecondaryButton>
-              <PrimaryButton
+              </button>
+              <button
                 type="submit"
-                isLoading={saving}
-                isDisabled={saving}
-                className="flex-1"
+                disabled={saving}
+                className="flex-1 rounded-2xl py-4 text-sm font-bold text-white transition hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-50"
+                style={{
+                  background: saving
+                    ? "var(--color-body-muted)"
+                    : "var(--color-primary)",
+                  boxShadow: saving
+                    ? "none"
+                    : "0 8px 22px -12px var(--color-primary-shadow)",
+                }}
               >
-                Simpan
-              </PrimaryButton>
+                {saving ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                    Menyimpan...
+                  </span>
+                ) : (
+                  "Simpan"
+                )}
+              </button>
             </div>
           </form>
-        )}
+        </div>
+      </main>
+    );
+  }
+
+  // ── View: isChangingPin ─────────────────────────────────────────────────────
+
+  if (profile && isChangingPin) {
+    return (
+      <main className="flex h-full min-h-0 flex-col bg-app-surface-alt">
+        <PageHero
+          breadcrumb="Keamanan"
+          title="Ubah PIN"
+          onBack={() => {
+            setIsChangingPin(false);
+            setPinError(null);
+            setCurrentPin("");
+            setNewPin("");
+            setConfirmNewPin("");
+          }}
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <form
+            onSubmit={handleChangePin}
+            className="space-y-5 px-4 pb-10 pt-5"
+          >
+            <p className="text-[13px] text-app-body-muted leading-relaxed">
+              Masukkan PIN saat ini lalu buat PIN baru 4 digit.
+            </p>
+
+            <div className="space-y-5">
+              <div>
+                <label className="mb-3 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted">
+                  PIN Saat Ini
+                </label>
+                <OtpInput
+                  value={currentPin}
+                  onChange={(v) => {
+                    setCurrentPin(v);
+                    setPinError(null);
+                  }}
+                  length={4}
+                  disabled={pinLoading}
+                  error={pinError ?? undefined}
+                  masked
+                />
+              </div>
+              <div>
+                <label className="mb-3 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted">
+                  PIN Baru
+                </label>
+                <OtpInput
+                  value={newPin}
+                  onChange={(v) => {
+                    setNewPin(v);
+                    setPinError(null);
+                  }}
+                  length={4}
+                  disabled={pinLoading}
+                  masked
+                  autoFocus={false}
+                />
+              </div>
+              <div>
+                <label className="mb-3 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted">
+                  Konfirmasi PIN Baru
+                </label>
+                <OtpInput
+                  value={confirmNewPin}
+                  onChange={(v) => {
+                    setConfirmNewPin(v);
+                    setPinError(null);
+                  }}
+                  length={4}
+                  disabled={pinLoading}
+                  masked
+                  autoFocus={false}
+                />
+              </div>
+            </div>
+
+            {pinError && (
+              <div className="flex items-start gap-2.5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+                <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                <p className="text-sm text-red-600">{pinError}</p>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsChangingPin(false);
+                  setPinError(null);
+                  setCurrentPin("");
+                  setNewPin("");
+                  setConfirmNewPin("");
+                }}
+                className="flex-1 rounded-2xl py-4 text-sm font-bold text-app-body transition hover:bg-app-surface active:scale-95"
+                style={{ background: "var(--color-surface-alt)" }}
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={
+                  pinLoading ||
+                  currentPin.length !== 4 ||
+                  newPin.length !== 4 ||
+                  confirmNewPin.length !== 4
+                }
+                className="flex-1 rounded-2xl py-4 text-sm font-bold text-white transition hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-50"
+                style={{
+                  background: pinLoading
+                    ? "var(--color-body-muted)"
+                    : "var(--color-primary)",
+                  boxShadow: pinLoading
+                    ? "none"
+                    : "0 8px 22px -12px var(--color-primary-shadow)",
+                }}
+              >
+                {pinLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                    Menyimpan...
+                  </span>
+                ) : (
+                  "Simpan PIN"
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </main>
+    );
+  }
+
+  // ── View: isManagingFamily ──────────────────────────────────────────────────
+
+  if (profile && isManagingFamily && currentHouse) {
+    return (
+      <main className="flex h-full min-h-0 flex-col bg-app-surface-alt">
+        <PageHero
+          breadcrumb="Rumah"
+          title="Kelola Penghuni"
+          onBack={() => {
+            setIsManagingFamily(false);
+            setFamilyActionError(null);
+            setShowAddMemberForm(false);
+            setAddMemberError(null);
+          }}
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="space-y-3 px-4 pb-10 pt-5">
+            {familyActionError && (
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+                <p className="text-[13px] text-red-600">{familyActionError}</p>
+                <button
+                  type="button"
+                  onClick={() => setFamilyActionError(null)}
+                >
+                  <XMarkIcon className="h-4 w-4 text-red-400" />
+                </button>
+              </div>
+            )}
+
+            {/* Member list */}
+            <div className="space-y-2.5">
+              {currentHouse.members.map((m) => (
+                <div
+                  key={m.userId}
+                  className="rounded-2xl bg-app-surface p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar name={m.fullName} size={40} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold text-app-title">
+                        {m.fullName}
+                      </p>
+                      <p className="text-[11px] text-app-body-muted">
+                        {m.username ? `@${m.username}` : "—"}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                        m.relationship === "OWNER"
+                          ? "bg-app-primary-muted text-app-primary"
+                          : "bg-app-surface-alt text-app-body-muted"
+                      }`}
+                    >
+                      {RELATIONSHIP_LABELS[m.relationship] ?? m.relationship}
+                    </span>
+                  </div>
+
+                  {m.userId !== profile.id && m.relationship !== "OWNER" && (
+                    <div className="mt-3 flex gap-2 border-t border-[var(--color-input-border)] pt-3">
+                      <button
+                        type="button"
+                        onClick={() => handleTransferOwner(m.userId)}
+                        disabled={
+                          transferLoadingId !== null || removeLoadingId !== null
+                        }
+                        className="flex-1 rounded-xl py-2 text-[11px] font-bold text-white transition active:scale-95 disabled:opacity-50"
+                        style={{ background: "var(--color-primary)" }}
+                      >
+                        Jadikan Kepala
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMember(m.userId)}
+                        disabled={
+                          transferLoadingId !== null || removeLoadingId !== null
+                        }
+                        className="flex items-center gap-1 rounded-xl px-3 py-2 text-[11px] font-bold text-red-600 transition hover:bg-red-50 active:scale-95 disabled:opacity-40"
+                      >
+                        <UserMinusIcon className="h-3.5 w-3.5" />
+                        Keluarkan
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Add member */}
+            <div className="rounded-2xl bg-app-surface shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+              {!showAddMemberForm ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddMemberForm(true);
+                    setAddMemberError(null);
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 transition hover:bg-app-surface-alt active:scale-[0.98]"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-app-primary-muted">
+                    <PlusIcon className="h-[18px] w-[18px] text-app-primary" />
+                  </div>
+                  <span className="text-[13px] font-semibold text-app-title">
+                    Tambah Anggota Keluarga
+                  </span>
+                </button>
+              ) : (
+                <form
+                  onSubmit={handleAddMemberSubmit}
+                  className="space-y-4 p-4"
+                >
+                  <h3 className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-body-muted">
+                    Tambah Anggota Baru
+                  </h3>
+                  <FieldInput
+                    label="Nama Lengkap"
+                    id="add-name"
+                    value={addMemberFullName}
+                    onChange={(e) => {
+                      setAddMemberFullName(e.target.value);
+                      setAddMemberError(null);
+                    }}
+                    placeholder="Contoh: Siti Aminah"
+                    autoComplete="name"
+                  />
+                  <FieldInput
+                    label="Username"
+                    id="add-username"
+                    optional
+                    value={addMemberUsername}
+                    onChange={(e) => setAddMemberUsername(e.target.value)}
+                    placeholder="Contoh: siti_aminah"
+                    autoComplete="username"
+                  />
+                  <FieldInput
+                    label="Nomor WhatsApp"
+                    id="add-wa"
+                    value={addMemberWaNumber}
+                    onChange={(e) => {
+                      setAddMemberWaNumber(e.target.value);
+                      setAddMemberError(null);
+                    }}
+                    placeholder="08xxxxxxxxxx"
+                    autoComplete="tel"
+                  />
+                  {addMemberError && (
+                    <div className="flex items-start gap-2 rounded-2xl border border-red-100 bg-red-50 px-3 py-2.5">
+                      <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                      <p className="text-xs text-red-600">{addMemberError}</p>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddMemberForm(false);
+                        setAddMemberError(null);
+                      }}
+                      className="flex-1 rounded-2xl py-3 text-sm font-bold text-app-body transition active:scale-95"
+                      style={{ background: "var(--color-surface-alt)" }}
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={addMemberLoading}
+                      className="flex-1 rounded-2xl py-3 text-sm font-bold text-white transition active:scale-95 disabled:opacity-50"
+                      style={{ background: "var(--color-primary)" }}
+                    >
+                      {addMemberLoading ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                          Menambah...
+                        </span>
+                      ) : (
+                        "Tambah"
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <ConfirmDialog
+          state={confirmDialog}
+          loading={confirmLoading}
+          onClose={() => !confirmLoading && setConfirmDialog(null)}
+        />
+      </main>
+    );
+  }
+
+  // ── View: default profile ───────────────────────────────────────────────────
+
+  return (
+    <main className="flex h-full min-h-0 flex-col bg-app-surface-alt">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {/* ── Hero ──────────────────────────────────────────────────────── */}
+        <section
+          aria-label="Profil pengguna"
+          className="relative overflow-hidden px-4 pb-6 pt-10 text-white"
+          style={{
+            background:
+              "linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%)",
+          }}
+        >
+          <div
+            className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full bg-white/10"
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute -bottom-10 -left-4 h-28 w-28 rounded-full bg-white/[0.06]"
+            aria-hidden
+          />
+
+          <div className="relative z-10 flex flex-col items-center">
+            {/* Avatar upload */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/heic"
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
+            <div className="relative mb-3">
+              <div className="h-20 w-20 overflow-hidden rounded-full ring-2 ring-white/30">
+                <Avatar
+                  name={profile?.fullName ?? ""}
+                  src={profile?.profilePictureUrl ?? null}
+                  size={80}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={avatarLoading}
+                className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity hover:opacity-100 focus:opacity-100 active:opacity-100 disabled:opacity-100"
+                aria-label="Ubah foto profil"
+              >
+                {avatarLoading ? (
+                  <ArrowPathIcon className="h-5 w-5 animate-spin text-white" />
+                ) : (
+                  <CameraIcon className="h-5 w-5 text-white" />
+                )}
+              </button>
+            </div>
+
+            <h1 className="text-[19px] font-extrabold leading-tight text-white">
+              {profile?.fullName ?? "—"}
+            </h1>
+            {profile?.username && (
+              <p className="mt-0.5 text-[11px] text-white/60">
+                @{profile.username}
+              </p>
+            )}
+
+            {/* Role chips */}
+            {(currentResidence?.roles?.length ?? 0) > 0 && (
+              <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                {currentResidence!.roles.map((role) => (
+                  <span
+                    key={role.id}
+                    className="rounded-full bg-white/15 px-2.5 py-[3px] text-[9px] font-bold uppercase tracking-widest text-white/80"
+                  >
+                    {role.name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Community */}
+            {(currentResidence?.tenant || currentResidence?.community) && (
+              <p className="mt-1.5 text-[11px] text-white/50">
+                {[
+                  currentResidence?.tenant?.name,
+                  currentResidence?.community?.name ??
+                    currentResidence?.community?.code,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
+          </div>
+        </section>
+
+        {/* ── Content ─────────────────────────────────────────────────── */}
+        <div className="space-y-3 px-4 pb-10 pt-4">
+          {/* Error banners */}
+          {error && (
+            <div className="flex items-center gap-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+              <p className="text-[13px] text-red-600">{error}</p>
+            </div>
+          )}
+          {avatarError && (
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+              <p className="text-[13px] text-red-600">{avatarError}</p>
+              <button
+                type="button"
+                onClick={() => setAvatarError(null)}
+                className="shrink-0"
+              >
+                <XMarkIcon className="h-4 w-4 text-red-400" />
+              </button>
+            </div>
+          )}
+
+          {/* Residence selector */}
+          {residences.length > 1 && (
+            <div>
+              <div className="mb-2">
+                <h2 className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-body-muted">
+                  Lingkungan
+                </h2>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+                {residences.map((res, i) => {
+                  const label = [
+                    res.tenant.name,
+                    res.community.name || res.community.code,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
+                  const isActive = i === selectedResidenceIndex;
+                  return (
+                    <button
+                      key={`${res.tenant.id}-${res.house.houseId}`}
+                      type="button"
+                      onClick={() => setSelectedResidenceIndex(i)}
+                      className={`shrink-0 flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition active:scale-95 ${
+                        isActive
+                          ? "text-white shadow-sm"
+                          : "bg-app-surface text-app-body-muted hover:bg-app-surface-alt"
+                      }`}
+                      style={
+                        isActive
+                          ? { background: "var(--color-primary)" }
+                          : undefined
+                      }
+                    >
+                      {res.isPrimary && (
+                        <span
+                          className="h-1.5 w-1.5 rounded-full bg-current opacity-80"
+                          aria-hidden
+                        />
+                      )}
+                      <span className="max-w-[140px] truncate">
+                        {label || "Lingkungan"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Badges */}
+          {(profile?.badges?.length ?? 0) > 0 && (
+            <div className="rounded-2xl bg-app-surface p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+              <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.07em] text-app-body-muted">
+                Lencana
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {profile!.badges!.map((badge) => (
+                  <span
+                    key={badge.id}
+                    className="flex h-10 w-10 items-center justify-center rounded-2xl bg-app-surface-alt text-xl transition-transform hover:scale-110"
+                    title={
+                      badge.description
+                        ? `${badge.name}: ${badge.description}`
+                        : badge.name
+                    }
+                  >
+                    {badge.icon}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Account info */}
+          {profile && (
+            <div className="rounded-2xl bg-app-surface shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+              <div className="flex items-center justify-between px-4 pt-4">
+                <h2 className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-body-muted">
+                  Informasi Akun
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-app-primary-muted active:scale-90"
+                  style={{ color: "var(--color-primary)" }}
+                  aria-label="Edit profil"
+                >
+                  <PencilSquareIcon className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="px-4 pb-4 pt-2">
+                <InfoRow
+                  label="WhatsApp"
+                  value={profile.waNumberMasked ?? "—"}
+                />
+                <InfoRow label="Email" value={profile.email ?? "—"} />
+                <InfoRow
+                  label="Tanggal Lahir"
+                  value={formatDate(profile.dateOfBirth)}
+                />
+                <InfoRow
+                  label="Status"
+                  isLast
+                  value={
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                        profile.status === "ACTIVE"
+                          ? "bg-app-primary-muted text-app-primary"
+                          : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {profile.status === "ACTIVE" ? "Aktif" : profile.status}
+                    </span>
+                  }
+                />
+              </div>
+            </div>
+          )}
+
+          {/* House card */}
+          {currentHouse && (
+            <div className="overflow-hidden rounded-2xl bg-app-surface shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+              <div className="flex items-center justify-between px-4 pt-4">
+                <h2 className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-body-muted">
+                  Rumah
+                </h2>
+                {isKepalaKeluarga && (
+                  <button
+                    type="button"
+                    onClick={() => setIsManagingFamily(true)}
+                    className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-app-primary-muted active:scale-90"
+                    style={{ color: "var(--color-primary)" }}
+                    aria-label="Kelola anggota keluarga"
+                  >
+                    <UsersIcon className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <div className="px-4 pb-4 pt-2">
+                {currentHouse.blok_rumah && (
+                  <InfoRow
+                    label="Blok"
+                    value={currentHouse.blok_rumah}
+                    isLast={!currentHouse.address}
+                  />
+                )}
+                {currentHouse.address && (
+                  <InfoRow label="Alamat" value={currentHouse.address} isLast />
+                )}
+              </div>
+
+              {(currentHouse.members?.length ?? 0) > 0 && (
+                <div
+                  className="space-y-2 border-t px-4 py-3"
+                  style={{
+                    borderColor: "var(--color-input-border)",
+                    background: "var(--color-surface-alt)",
+                  }}
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-app-body-muted">
+                    Penghuni
+                  </p>
+                  {currentHouse.members.map((m) => (
+                    <div
+                      key={m.userId}
+                      className="flex items-center gap-2.5 rounded-2xl bg-app-surface px-3 py-2.5 shadow-[0_2px_8px_rgba(0,40,5,0.05)]"
+                    >
+                      <Avatar name={m.fullName} size={36} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-bold text-app-title leading-tight">
+                          {m.fullName}
+                        </p>
+                        <p className="text-[10px] text-app-body-muted">
+                          {m.username ? `@${m.username}` : "—"}
+                        </p>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                          m.relationship === "OWNER"
+                            ? "bg-app-primary-muted text-app-primary"
+                            : "bg-app-surface-alt text-app-body-muted"
+                        }`}
+                      >
+                        {RELATIONSHIP_LABELS[m.relationship] ?? m.relationship}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Incoming join requests */}
+          {pendingForCurrentHouse.length > 0 && currentHouse && (
+            <div className="overflow-hidden rounded-2xl bg-app-surface shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+              <div className="px-4 pt-4">
+                <h2 className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-body-muted">
+                  Permintaan Bergabung
+                </h2>
+                {respondError && (
+                  <div className="mt-2 rounded-2xl border border-red-100 bg-red-50 px-3 py-2">
+                    <p className="text-xs text-red-600">{respondError}</p>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2 px-4 pb-4 pt-3">
+                {pendingForCurrentHouse.map((req) => (
+                  <div
+                    key={req.id}
+                    className="rounded-2xl border border-[var(--color-input-border)] bg-app-surface-alt p-3"
+                  >
+                    <p className="text-[13px] font-semibold text-app-title">
+                      {req.requesterFullName}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-app-body-muted">
+                      Blok {req.blokRumah} · {formatDate(req.createdAt)}
+                    </p>
+                    <div className="mt-2.5 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleRespondToJoinRequest(req.id, "approve")
+                        }
+                        disabled={respondingRequestId !== null}
+                        className="flex-1 rounded-xl py-2 text-xs font-bold text-white transition active:scale-95 disabled:opacity-50"
+                        style={{ background: "var(--color-primary)" }}
+                      >
+                        {respondingRequestId === req.id ? (
+                          <span className="flex items-center justify-center gap-1">
+                            <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                            Memproses
+                          </span>
+                        ) : (
+                          "Setuju"
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleRespondToJoinRequest(req.id, "reject")
+                        }
+                        disabled={respondingRequestId !== null}
+                        className="flex-1 rounded-xl py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 active:scale-95 disabled:opacity-50"
+                      >
+                        Tolak
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Pending join notice */}
+          {!currentHouse && profile?.pendingJoinRequest && (
+            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <div>
+                <p className="text-[13px] font-semibold text-amber-800">
+                  Menunggu Persetujuan
+                </p>
+                <p className="mt-0.5 text-xs text-amber-700 leading-relaxed">
+                  Permintaan bergabung ke blok{" "}
+                  {profile.pendingJoinRequest.blokRumah} menunggu persetujuan
+                  oleh {profile.pendingJoinRequest.ownerFullName}.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Appearance */}
+          <div className="overflow-hidden rounded-2xl bg-app-surface shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+            <div className="px-4 pt-4 pb-1">
+              <h2 className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-body-muted">
+                Penampilan
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setThemeSheetOpen(true)}
+              disabled={appearanceSaving}
+              className="flex w-full items-center gap-3 px-4 pb-4 pt-2 transition hover:bg-app-surface-alt active:scale-[0.98] disabled:opacity-60"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-app-primary-muted">
+                <SwatchIcon className="h-[18px] w-[18px] text-app-primary" />
+              </div>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-[13px] font-semibold text-app-title">
+                  Tema Warna
+                </p>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <span
+                    className="h-3 w-3 rounded-full ring-1 ring-black/10"
+                    style={{
+                      background: getTheme(themeId).colors.primary,
+                    }}
+                    aria-hidden
+                  />
+                  <p className="text-[11px] text-app-body-muted">
+                    {getTheme(themeId).nameId}
+                  </p>
+                </div>
+              </div>
+              <span
+                className="text-[11px] font-semibold"
+                style={{ color: "var(--color-primary)" }}
+              >
+                Ganti
+              </span>
+            </button>
+          </div>
+
+          {/* Actions */}
+          <div className="space-y-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsChangingPin(true)}
+              className="flex w-full items-center gap-3 rounded-2xl bg-app-surface px-4 py-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition hover:bg-app-surface-alt active:scale-[0.98]"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-app-primary-muted">
+                <KeyIcon className="h-[18px] w-[18px] text-app-primary" />
+              </div>
+              <span className="text-[13px] font-semibold text-app-title">
+                Ubah PIN
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-3 rounded-2xl bg-app-surface px-4 py-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition hover:bg-red-50 active:scale-[0.98]"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50">
+                <ArrowRightOnRectangleIcon className="h-[18px] w-[18px] text-red-500" />
+              </div>
+              <span className="text-[13px] font-semibold text-red-600">
+                Keluar
+              </span>
+            </button>
+          </div>
+
+          {/* Footer */}
+          <p className="text-center text-[10px] text-app-body-muted/50">
+            Warga Digital · Profil
+          </p>
+        </div>
       </div>
+
+      {/* Overlays */}
+      <ThemeSheet
+        open={themeSheetOpen}
+        currentId={themeId}
+        saving={appearanceSaving}
+        onSelect={handleThemeSelect}
+        onClose={() => setThemeSheetOpen(false)}
+      />
+      <ConfirmDialog
+        state={confirmDialog}
+        loading={confirmLoading}
+        onClose={() => !confirmLoading && setConfirmDialog(null)}
+      />
     </main>
   );
 }
