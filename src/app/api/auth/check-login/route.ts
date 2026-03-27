@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
-
-function normalizeWaNumber(waNumber: string): string {
-  const digits = String(waNumber ?? "").replace(/\D/g, "");
-  if (digits.startsWith("62")) return "+" + digits;
-  if (digits.startsWith("0")) return "+62" + digits.slice(1);
-  return "+62" + digits;
-}
-
-function looksLikePhone(input: string): boolean {
-  return /^[\d+\s-]+$/.test(input.trim()) && input.replace(/\D/g, "").length >= 10;
-}
+import {
+  looksLikePhone,
+  normalizeWaNumber,
+  getWaNumberVariants,
+} from "@/lib/phone-utils";
 
 /** POST: Check if username or WA number exists and can proceed to PIN step. */
 export async function POST(request: NextRequest) {
@@ -20,22 +14,55 @@ export async function POST(request: NextRequest) {
 
     if (!login) {
       return NextResponse.json(
-        { exists: false, error: "Isi Username atau Nomor WhatsApp untuk melanjutkan." },
-        { status: 400 }
+        {
+          exists: false,
+          error: "Isi Username atau Nomor WhatsApp untuk melanjutkan.",
+        },
+        { status: 400 },
       );
     }
 
     const supabase = createServerClient();
-    let user: { id: string; full_name: string; pin_hash: string | null; status: string } | null = null;
+    let user: {
+      id: string;
+      full_name: string;
+      pin_hash: string | null;
+      status: string;
+    } | null = null;
+
     if (looksLikePhone(login)) {
-      const normalized = normalizeWaNumber(login);
+      // Build all plausible storage variants so we find the user regardless
+      // of which format was used when the account was created (e.g. "08...",
+      // "628...", "+628...", or bare "8...").
+      const variants = getWaNumberVariants(login);
+
       const { data, error: fetchError } = await supabase
         .from("users")
         .select("id, full_name, pin_hash, status")
-        .eq("wa_number", normalized)
-        .maybeSingle();
-      if (!fetchError) user = data;
+        .in("wa_number", variants)
+        .limit(1);
+
+      if (!fetchError && data && data.length > 0) {
+        user = data[0];
+      } else if (fetchError) {
+        console.error("[Check-login] Phone lookup error:", fetchError);
+      }
+
+      // Fallback: also try the canonical normalized form explicitly
+      // (handles the case where getWaNumberVariants missed a format)
+      if (!user) {
+        const canonical = normalizeWaNumber(login);
+        if (!variants.includes(canonical)) {
+          const { data: fb, error: fbErr } = await supabase
+            .from("users")
+            .select("id, full_name, pin_hash, status")
+            .eq("wa_number", canonical)
+            .maybeSingle();
+          if (!fbErr && fb) user = fb;
+        }
+      }
     } else {
+      // Treat as username (case-insensitive)
       const { data: row, error: fetchError } = await supabase
         .from("users")
         .select("id, full_name, pin_hash, status")
@@ -47,22 +74,34 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json(
-        { exists: false, error: "Username atau nomor WhatsApp tidak ditemukan." },
-        { status: 404 }
+        {
+          exists: false,
+          error: "Username atau nomor WhatsApp tidak ditemukan.",
+        },
+        { status: 404 },
       );
     }
 
     if (!user.pin_hash) {
       return NextResponse.json(
-        { exists: true, canProceed: false, error: "Akun belum mengatur PIN. Selesaikan pendaftaran terlebih dahulu." },
-        { status: 400 }
+        {
+          exists: true,
+          canProceed: false,
+          error:
+            "Akun belum mengatur PIN. Selesaikan pendaftaran terlebih dahulu.",
+        },
+        { status: 400 },
       );
     }
 
     if (user.status !== "ACTIVE") {
       return NextResponse.json(
-        { exists: true, canProceed: false, error: "Akun belum aktif. Verifikasi nomor WhatsApp terlebih dahulu." },
-        { status: 400 }
+        {
+          exists: true,
+          canProceed: false,
+          error: "Akun belum aktif. Verifikasi nomor WhatsApp terlebih dahulu.",
+        },
+        { status: 400 },
       );
     }
 
@@ -71,7 +110,7 @@ export async function POST(request: NextRequest) {
     console.error("[Check-login] Error:", err);
     return NextResponse.json(
       { exists: false, error: "Terjadi kesalahan. Coba lagi." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -8,19 +8,15 @@ import { OtpInput } from "@/components/auth/otp-input";
 import { parseBlokRumah } from "@/lib/blok-rumah";
 import { useAuthStore } from "@/stores/auth-store";
 import { useOnboardingStore } from "@/stores/onboarding-store";
+import {
+  normalizeWaNumber,
+  validateNormalizedWaNumber,
+} from "@/lib/phone-utils";
 
 const STEPS = [0, 1, 2] as const;
 type StepIndex = (typeof STEPS)[number];
 
-const WA_REGEX = /^(\+62|62|0)8[1-9][0-9]{6,10}$/;
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,30}$/;
-
-function normalizeWaNumber(value: string): string {
-  const digits = value.replace(/\D/g, "");
-  if (digits.startsWith("62")) return "+" + digits;
-  if (digits.startsWith("0")) return "+62" + digits.slice(1);
-  return "+62" + digits;
-}
 
 interface RegisterData {
   userId: string;
@@ -69,8 +65,10 @@ export default function RegisterWizardPage() {
   const [username, setUsername] = useState("");
   const [blokRumah, setBlokRumah] = useState("");
   const [registerData, setRegisterData] = useState<RegisterData | null>(null);
-  const [existingHouseInfo, setExistingHouseInfo] = useState<ExistingHouseInfo | null>(null);
-  const [pendingApprovalData, setPendingApprovalData] = useState<PendingApprovalData | null>(null);
+  const [existingHouseInfo, setExistingHouseInfo] =
+    useState<ExistingHouseInfo | null>(null);
+  const [pendingApprovalData, setPendingApprovalData] =
+    useState<PendingApprovalData | null>(null);
   const [showPinFormInPending, setShowPinFormInPending] = useState(false);
 
   // Step 1: Add family
@@ -90,7 +88,11 @@ export default function RegisterWizardPage() {
     username?: string;
     blok?: string;
   }>({});
-  const [addFieldErrors, setAddFieldErrors] = useState<{ name?: string; username?: string; wa?: string }>({});
+  const [addFieldErrors, setAddFieldErrors] = useState<{
+    name?: string;
+    username?: string;
+    wa?: string;
+  }>({});
   const [loading, setLoading] = useState(false);
 
   const clearStep0Errors = () => {
@@ -103,25 +105,32 @@ export default function RegisterWizardPage() {
     setError("");
     setFieldErrors({});
 
-    const nameE = !fullName.trim() ? "Nama lengkap wajib diisi" : fullName.trim().length < 2 ? "Nama minimal 2 karakter" : undefined;
+    const nameE = !fullName.trim()
+      ? "Nama lengkap wajib diisi"
+      : fullName.trim().length < 2
+        ? "Nama minimal 2 karakter"
+        : undefined;
     const hasWa = waNumber.trim().length > 0;
     const hasUsername = username.trim().length > 0;
     if (!hasWa && !hasUsername) {
-      setFieldErrors({ wa: "Isi nomor WhatsApp atau username (minimal salah satu untuk login)." });
+      setFieldErrors({
+        wa: "Isi nomor WhatsApp atau username (minimal salah satu untuk login).",
+      });
       return;
     }
     let waE: string | undefined;
     if (hasWa) {
       const normalized = normalizeWaNumber(waNumber);
-      if (!WA_REGEX.test(normalized.replace("+", ""))) waE = "Format nomor WhatsApp tidak valid (contoh: 08123456789)";
-      else waE = undefined;
+      waE = validateNormalizedWaNumber(normalized) ?? undefined;
     }
     let userE: string | undefined;
     if (hasUsername) {
-      if (!USERNAME_REGEX.test(username.trim())) userE = "Username 3–30 karakter, huruf/angka/underscore saja";
+      if (!USERNAME_REGEX.test(username.trim()))
+        userE = "Username 3–30 karakter, huruf/angka/underscore saja";
       else userE = undefined;
     }
-    const { normalized: blokNormalized, error: blokError } = parseBlokRumah(blokRumah);
+    const { normalized: blokNormalized, error: blokError } =
+      parseBlokRumah(blokRumah);
     const blokE = blokError;
 
     if (nameE || waE || userE || blokE) {
@@ -151,7 +160,12 @@ export default function RegisterWizardPage() {
         return;
       }
 
-      const payload: { fullName: string; waNumber?: string; username?: string; blokRumah: string } = {
+      const payload: {
+        fullName: string;
+        waNumber?: string;
+        username?: string;
+        blokRumah: string;
+      } = {
         fullName: fullName.trim(),
         blokRumah: blokNormalized,
       };
@@ -166,8 +180,10 @@ export default function RegisterWizardPage() {
       const data = await res.json();
       if (!res.ok) {
         const msg = data.error ?? "Gagal mendaftar";
-        if (msg.includes("WhatsApp") || msg.includes("nomor")) setFieldErrors({ wa: msg });
-        else if (msg.includes("Username") || msg.includes("username")) setFieldErrors({ username: msg });
+        if (msg.includes("WhatsApp") || msg.includes("nomor"))
+          setFieldErrors({ wa: msg });
+        else if (msg.includes("Username") || msg.includes("username"))
+          setFieldErrors({ username: msg });
         else setError(msg);
         return;
       }
@@ -190,7 +206,13 @@ export default function RegisterWizardPage() {
     setError("");
     setLoading(true);
     try {
-      const payload: { fullName: string; waNumber?: string; username?: string; blokRumah: string; requestToJoinExisting: boolean } = {
+      const payload: {
+        fullName: string;
+        waNumber?: string;
+        username?: string;
+        blokRumah: string;
+        requestToJoinExisting: boolean;
+      } = {
         fullName: fullName.trim(),
         blokRumah: existingHouseInfo.blokRumah,
         requestToJoinExisting: true,
@@ -293,9 +315,19 @@ export default function RegisterWizardPage() {
     const trimmedWa = addWaNumber.trim();
     const normalizedWa = normalizeWaNumber(addWaNumber);
 
-    const nameErr = !trimmedName ? "Nama lengkap wajib diisi" : trimmedName.length < 2 ? "Nama lengkap minimal 2 karakter" : undefined;
-    const userErr = !trimmedUsername ? "Username wajib untuk anggota" : !USERNAME_REGEX.test(trimmedUsername) ? "Username 3–30 karakter, huruf/angka/underscore saja" : undefined;
-    const waErr = !trimmedWa ? "Nomor WhatsApp wajib untuk anggota" : !WA_REGEX.test(normalizedWa.replace("+", "")) ? "Format nomor WhatsApp tidak valid (contoh: 08123456789)" : undefined;
+    const nameErr = !trimmedName
+      ? "Nama lengkap wajib diisi"
+      : trimmedName.length < 2
+        ? "Nama lengkap minimal 2 karakter"
+        : undefined;
+    const userErr = !trimmedUsername
+      ? "Username wajib untuk anggota"
+      : !USERNAME_REGEX.test(trimmedUsername)
+        ? "Username 3–30 karakter, huruf/angka/underscore saja"
+        : undefined;
+    const waErr = !trimmedWa
+      ? "Nomor WhatsApp wajib untuk anggota"
+      : (validateNormalizedWaNumber(normalizedWa) ?? undefined);
 
     if (nameErr || userErr || waErr) {
       setAddFieldErrors({ name: nameErr, username: userErr, wa: waErr });
@@ -304,7 +336,12 @@ export default function RegisterWizardPage() {
 
     setMembers((prev) => [
       ...prev,
-      { id: `temp-${crypto.randomUUID()}`, fullName: trimmedName, username: trimmedUsername, waNumber: normalizedWa },
+      {
+        id: `temp-${crypto.randomUUID()}`,
+        fullName: trimmedName,
+        username: trimmedUsername,
+        waNumber: normalizedWa,
+      },
     ]);
     setAddFullName("");
     setAddUsername("");
@@ -385,9 +422,14 @@ export default function RegisterWizardPage() {
       {/* Pending approval (after submitting join request) */}
       {step === 0 && pendingApprovalData && (
         <>
-          <h1 className="text-xl font-semibold text-app-title">Menunggu persetujuan</h1>
+          <h1 className="text-xl font-semibold text-app-title">
+            Menunggu persetujuan
+          </h1>
           <p className="mt-2 text-sm text-app-body-muted">
-            Permintaan bergabung Anda telah dikirim. Pemilik rumah {pendingApprovalData.blokRumah} ({pendingApprovalData.ownerFullName}) akan menerima notifikasi. Anda dapat mengatur PIN sekarang agar bisa masuk setelah disetujui.
+            Permintaan bergabung Anda telah dikirim. Pemilik rumah{" "}
+            {pendingApprovalData.blokRumah} ({pendingApprovalData.ownerFullName}
+            ) akan menerima notifikasi. Anda dapat mengatur PIN sekarang agar
+            bisa masuk setelah disetujui.
           </p>
           {!showPinFormInPending ? (
             <div className="mt-8 flex flex-col gap-3">
@@ -412,10 +454,15 @@ export default function RegisterWizardPage() {
           ) : (
             <div className="mt-6 space-y-4">
               <div>
-                <label className="mb-2 block text-sm font-medium text-app-body-muted">PIN (4 digit)</label>
+                <label className="mb-2 block text-sm font-medium text-app-body-muted">
+                  PIN (4 digit)
+                </label>
                 <OtpInput
                   value={pin}
-                  onChange={(v) => { setPin(v); setError(""); }}
+                  onChange={(v) => {
+                    setPin(v);
+                    setError("");
+                  }}
                   length={4}
                   disabled={loading}
                   error={error}
@@ -423,10 +470,15 @@ export default function RegisterWizardPage() {
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-medium text-app-body-muted">Konfirmasi PIN</label>
+                <label className="mb-2 block text-sm font-medium text-app-body-muted">
+                  Konfirmasi PIN
+                </label>
                 <OtpInput
                   value={confirmPin}
-                  onChange={(v) => { setConfirmPin(v); setError(""); }}
+                  onChange={(v) => {
+                    setConfirmPin(v);
+                    setError("");
+                  }}
                   length={4}
                   disabled={loading}
                   masked
@@ -445,7 +497,9 @@ export default function RegisterWizardPage() {
                   type="button"
                   onPress={handlePendingSetPin}
                   isLoading={loading}
-                  isDisabled={loading || pin.length !== 4 || confirmPin.length !== 4}
+                  isDisabled={
+                    loading || pin.length !== 4 || confirmPin.length !== 4
+                  }
                   className="flex-1"
                 >
                   Simpan PIN
@@ -467,9 +521,14 @@ export default function RegisterWizardPage() {
             <span aria-hidden>←</span>
             Kembali ke Login
           </button>
-          <h1 className="text-xl font-semibold text-app-title">Rumah sudah terdaftar</h1>
+          <h1 className="text-xl font-semibold text-app-title">
+            Rumah sudah terdaftar
+          </h1>
           <p className="mt-2 text-sm text-app-body-muted">
-            Rumah blok {existingHouseInfo.blokRumah} sudah terdaftar. Didaftarkan oleh {existingHouseInfo.createdByFullName}. Pemilik: {existingHouseInfo.ownerFullName}. Untuk bergabung perlu persetujuan pemilik.
+            Rumah blok {existingHouseInfo.blokRumah} sudah terdaftar.
+            Didaftarkan oleh {existingHouseInfo.createdByFullName}. Pemilik:{" "}
+            {existingHouseInfo.ownerFullName}. Untuk bergabung perlu persetujuan
+            pemilik.
           </p>
           {error && <p className="mt-4 text-sm text-danger">{error}</p>}
           <div className="mt-6 flex gap-3">
@@ -513,7 +572,10 @@ export default function RegisterWizardPage() {
               label="Nama lengkap"
               placeholder="Contoh: Budi Santoso"
               value={fullName}
-              onValueChange={(v) => { setFullName(v); clearStep0Errors(); }}
+              onValueChange={(v) => {
+                setFullName(v);
+                clearStep0Errors();
+              }}
               isInvalid={!!fieldErrors.name}
               errorMessage={fieldErrors.name}
               size="lg"
@@ -526,14 +588,18 @@ export default function RegisterWizardPage() {
                 Untuk login nanti — pilih salah satu atau isi keduanya:
               </p>
               <p className="mt-0.5 text-xs text-app-body-muted">
-                Nomor WhatsApp atau username (3–30 karakter, huruf/angka/underscore). Minimal salah satu wajib diisi.
+                Nomor WhatsApp atau username (3–30 karakter,
+                huruf/angka/underscore). Minimal salah satu wajib diisi.
               </p>
             </div>
             <Input
               label="Nomor WhatsApp"
               placeholder="08xxxxxxxxxx (opsional jika isi username)"
               value={waNumber}
-              onValueChange={(v) => { setWaNumber(v); clearStep0Errors(); }}
+              onValueChange={(v) => {
+                setWaNumber(v);
+                clearStep0Errors();
+              }}
               isInvalid={!!fieldErrors.wa}
               errorMessage={fieldErrors.wa}
               size="lg"
@@ -545,7 +611,10 @@ export default function RegisterWizardPage() {
               label="Username"
               placeholder="Contoh: budi_santoso (opsional jika isi WhatsApp)"
               value={username}
-              onValueChange={(v) => { setUsername(v); clearStep0Errors(); }}
+              onValueChange={(v) => {
+                setUsername(v);
+                clearStep0Errors();
+              }}
               isInvalid={!!fieldErrors.username}
               errorMessage={fieldErrors.username}
               size="lg"
@@ -557,7 +626,10 @@ export default function RegisterWizardPage() {
               label="Blok rumah"
               placeholder="Contoh: N2, J12A"
               value={blokRumah}
-              onValueChange={(v) => { setBlokRumah(v); clearStep0Errors(); }}
+              onValueChange={(v) => {
+                setBlokRumah(v);
+                clearStep0Errors();
+              }}
               isInvalid={!!fieldErrors.blok}
               errorMessage={fieldErrors.blok}
               size="lg"
@@ -568,7 +640,11 @@ export default function RegisterWizardPage() {
             />
             {error && <p className="text-sm text-danger">{error}</p>}
             <div className="mt-2 flex justify-end">
-              <PrimaryButton type="submit" isLoading={loading} isDisabled={loading}>
+              <PrimaryButton
+                type="submit"
+                isLoading={loading}
+                isDisabled={loading}
+              >
                 Berikutnya
               </PrimaryButton>
             </div>
@@ -579,9 +655,12 @@ export default function RegisterWizardPage() {
       {/* Step 1: Tambah keluarga */}
       {step === 1 && registerData && (
         <>
-          <h1 className="text-xl font-semibold text-app-title">Tambahkan anggota keluarga</h1>
+          <h1 className="text-xl font-semibold text-app-title">
+            Tambahkan anggota keluarga
+          </h1>
           <p className="mt-1 text-sm text-app-body-muted">
-            Anda pemilik rumah ({registerData.blokRumah}). Tambahkan anggota keluarga. PIN yang Anda atur nanti menjadi PIN default mereka.
+            Anda pemilik rumah ({registerData.blokRumah}). Tambahkan anggota
+            keluarga. PIN yang Anda atur nanti menjadi PIN default mereka.
           </p>
           {members.length > 0 && (
             <div className="mt-6 rounded-xl border border-default-200 bg-default-50 p-4">
@@ -593,7 +672,11 @@ export default function RegisterWizardPage() {
                   <li key={m.id} className="text-sm text-app-body">
                     <span className="font-medium">{m.fullName}</span>
                     <span className="ml-1 text-app-body-muted">
-                      @{m.username} · {m.waNumber.replace(/(\+62)(\d{3})(\d{4})(\d+)/, "$1 $2-$3-$4")}
+                      @{m.username} ·{" "}
+                      {m.waNumber.replace(
+                        /(\+62)(\d{3})(\d{4})(\d+)/,
+                        "$1 $2-$3-$4",
+                      )}
                     </span>
                   </li>
                 ))}
@@ -606,42 +689,61 @@ export default function RegisterWizardPage() {
                 label="Nama lengkap"
                 placeholder="Contoh: Siti Aminah"
                 value={addFullName}
-                onValueChange={(v) => { setAddFullName(v); clearAddMemberErrors(); }}
+                onValueChange={(v) => {
+                  setAddFullName(v);
+                  clearAddMemberErrors();
+                }}
                 isInvalid={!!addFieldErrors.name}
                 size="lg"
                 variant="bordered"
                 classNames={inputClassNames}
                 autoComplete="name"
               />
-              {addFieldErrors.name && <p className="mt-1 text-sm text-danger">{addFieldErrors.name}</p>}
+              {addFieldErrors.name && (
+                <p className="mt-1 text-sm text-danger">
+                  {addFieldErrors.name}
+                </p>
+              )}
             </div>
             <div>
               <Input
                 label="Username"
                 placeholder="Contoh: siti_aminah (3–30 karakter)"
                 value={addUsername}
-                onValueChange={(v) => { setAddUsername(v); clearAddMemberErrors(); }}
+                onValueChange={(v) => {
+                  setAddUsername(v);
+                  clearAddMemberErrors();
+                }}
                 isInvalid={!!addFieldErrors.username}
                 size="lg"
                 variant="bordered"
                 classNames={inputClassNames}
                 autoComplete="username"
               />
-              {addFieldErrors.username && <p className="mt-1 text-sm text-danger">{addFieldErrors.username}</p>}
+              {addFieldErrors.username && (
+                <p className="mt-1 text-sm text-danger">
+                  {addFieldErrors.username}
+                </p>
+              )}
             </div>
             <div>
               <Input
                 label="Nomor WhatsApp"
                 placeholder="08xxxxxxxxxx"
                 value={addWaNumber}
-                onValueChange={(v) => { setAddWaNumber(v); clearAddMemberErrors(); }}
+                onValueChange={(v) => {
+                  setAddWaNumber(v);
+                  clearAddMemberErrors();
+                }}
                 isInvalid={!!addFieldErrors.wa}
                 size="lg"
                 variant="bordered"
                 classNames={inputClassNames}
                 autoComplete="tel"
               />
-              {addFieldErrors.wa && <p className="mt-1 text-sm text-danger">{addFieldErrors.wa}</p>}
+              {addFieldErrors.wa && (
+                <p className="mt-1 text-sm text-danger">{addFieldErrors.wa}</p>
+              )}
             </div>
             {error && <p className="text-sm text-danger">{error}</p>}
             <SecondaryButton type="submit" className="w-full">
@@ -649,10 +751,18 @@ export default function RegisterWizardPage() {
             </SecondaryButton>
           </form>
           <div className="mt-8 flex gap-3">
-            <SecondaryButton type="button" onClick={goPrevious} className="flex-1">
+            <SecondaryButton
+              type="button"
+              onClick={goPrevious}
+              className="flex-1"
+            >
               Sebelumnya
             </SecondaryButton>
-            <PrimaryButton type="button" onPress={handleNextStep1} className="flex-1">
+            <PrimaryButton
+              type="button"
+              onPress={handleNextStep1}
+              className="flex-1"
+            >
               Berikutnya
             </PrimaryButton>
           </div>
@@ -666,13 +776,21 @@ export default function RegisterWizardPage() {
           <p className="mt-1 text-sm text-app-body-muted">
             Buat PIN 4 digit untuk masuk. Jangan berikan PIN ke orang lain.
           </p>
-          <form onSubmit={handleSubmitStep2} className="mt-8 flex flex-1 flex-col">
+          <form
+            onSubmit={handleSubmitStep2}
+            className="mt-8 flex flex-1 flex-col"
+          >
             <div className="space-y-6">
               <div>
-                <label className="mb-2 block text-sm font-medium text-app-body-muted">PIN (4 digit)</label>
+                <label className="mb-2 block text-sm font-medium text-app-body-muted">
+                  PIN (4 digit)
+                </label>
                 <OtpInput
                   value={pin}
-                  onChange={(v) => { setPin(v); setError(""); }}
+                  onChange={(v) => {
+                    setPin(v);
+                    setError("");
+                  }}
                   length={4}
                   disabled={loading}
                   error={error}
@@ -680,10 +798,15 @@ export default function RegisterWizardPage() {
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-medium text-app-body-muted">Konfirmasi PIN</label>
+                <label className="mb-2 block text-sm font-medium text-app-body-muted">
+                  Konfirmasi PIN
+                </label>
                 <OtpInput
                   value={confirmPin}
-                  onChange={(v) => { setConfirmPin(v); setError(""); }}
+                  onChange={(v) => {
+                    setConfirmPin(v);
+                    setError("");
+                  }}
                   length={4}
                   disabled={loading}
                   masked
@@ -691,15 +814,23 @@ export default function RegisterWizardPage() {
                 />
               </div>
             </div>
-            {error && <p className="mt-4 text-center text-sm text-danger">{error}</p>}
+            {error && (
+              <p className="mt-4 text-center text-sm text-danger">{error}</p>
+            )}
             <div className="mt-8 flex gap-3">
-              <SecondaryButton type="button" onClick={goPrevious} className="flex-1">
+              <SecondaryButton
+                type="button"
+                onClick={goPrevious}
+                className="flex-1"
+              >
                 Sebelumnya
               </SecondaryButton>
               <PrimaryButton
                 type="submit"
                 isLoading={loading}
-                isDisabled={loading || pin.length !== 4 || confirmPin.length !== 4}
+                isDisabled={
+                  loading || pin.length !== 4 || confirmPin.length !== 4
+                }
                 className="flex-1"
               >
                 Simpan PIN
