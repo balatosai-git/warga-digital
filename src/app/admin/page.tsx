@@ -15,6 +15,7 @@ import {
   WalletIcon as WalletOutlineIcon,
   ArrowTrendingUpIcon,
   ShieldCheckIcon,
+  TagIcon,
 } from "@heroicons/react/24/outline";
 import { ShieldCheckIcon as ShieldCheckSolidIcon } from "@heroicons/react/24/solid";
 import { PageLoader } from "@/components/ui";
@@ -85,6 +86,9 @@ const AdminShieldIcon = ({ className = "" }: IconProps) => (
 );
 const RefreshIcon = ({ className = "" }: IconProps) => (
   <ArrowPathIcon className={className} aria-hidden />
+);
+const KasRtCategoryIcon = ({ className = "" }: IconProps) => (
+  <TagIcon className={className} aria-hidden />
 );
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
@@ -435,6 +439,13 @@ export default function AdminPage() {
       id: "admin-qa-join",
       onClick: () => router.push("/admin/join-requests"),
     },
+    {
+      label: "Kat. Kas RT",
+      sublabel: "Kelola kategori",
+      icon: KasRtCategoryIcon,
+      id: "admin-qa-kas-rt-categories",
+      onClick: () => router.push("/admin/kas-rt-categories"),
+    },
   ];
 
   // ── Guards ─────────────────────────────────────────────────────────────────
@@ -537,7 +548,7 @@ export default function AdminPage() {
               Aksi Cepat
             </h2>
           </div>
-          <div className="grid grid-cols-4 gap-1">
+          <div className="grid grid-cols-4 gap-1 overflow-x-auto scrollbar-none">
             {quickActions.map((action) => (
               <QuickActionButton key={action.id} {...action} />
             ))}
