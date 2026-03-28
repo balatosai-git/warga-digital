@@ -203,6 +203,9 @@ export default function KasRTPage() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // ── Community info ────────────────────────────────────────────────────────────
+  const [communityName, setCommunityName] = useState("Warga Digital");
+
   // ── Edit / delete state ───────────────────────────────────────────────────────
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
   const [deletingTx, setDeletingTx] = useState<TransactionItem | null>(null);
@@ -448,6 +451,21 @@ export default function KasRTPage() {
       } catch {
         // ignore
       }
+
+      try {
+        const infoRes = await apiFetch("/api/kas-rt/info");
+        if (infoRes.ok) {
+          const info = (await infoRes.json()) as {
+            communityName?: string;
+          };
+          if (info.communityName) {
+            setCommunityName(info.communityName);
+          }
+        }
+      } catch {
+        // ignore
+      }
+
       await Promise.all([loadTransactions(), loadCategories()]);
       setIsInitialLoading(false);
     }
@@ -820,7 +838,7 @@ export default function KasRTPage() {
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
-                  Warga Digital · Keuangan
+                  {communityName} · Keuangan
                 </p>
                 <h1 className="truncate text-lg font-extrabold leading-tight text-white">
                   Kas RT
