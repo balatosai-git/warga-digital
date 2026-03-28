@@ -292,7 +292,7 @@ export default function AdminPage() {
       label: "Warga",
       sublabel: "Kelola data penghuni",
       icon: UsersIcon,
-      // no page yet
+      href: "/admin/warga",
     },
     {
       label: "Blok Rumah",
