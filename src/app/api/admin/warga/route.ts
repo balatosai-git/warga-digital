@@ -131,7 +131,30 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // ── 6. Build full warga list ───────────────────────────────────────────────
+  // ── 6. Batch-fetch last active session for each user ─────────────────────
+  const lastActiveMap: Record<string, string | null> = {};
+  if (userIds.length > 0) {
+    const { data: sessionRows } = await supabase
+      .from("sessions")
+      .select("user_id, last_active_at")
+      .in("user_id", userIds)
+      .order("last_active_at", { ascending: false });
+
+    type SessionRow = {
+      user_id: string;
+      last_active_at: string;
+    };
+
+    (sessionRows ?? []).forEach((s) => {
+      const row = s as unknown as SessionRow;
+      // Keep only the most-recent entry per user (results are pre-sorted DESC)
+      if (!lastActiveMap[row.user_id]) {
+        lastActiveMap[row.user_id] = row.last_active_at;
+      }
+    });
+  }
+
+  // ── 7. Build full warga list ───────────────────────────────────────────────
   const allWarga = rows.map((r) => ({
     tenant_user_id: r.id,
     user_id: r.user_id,
@@ -140,9 +163,10 @@ export async function GET(request: NextRequest) {
     blok_rumah: blokMap[r.user_id] ?? null,
     joined_at: r.joined_at,
     roles: rolesMap[r.id] ?? [],
+    last_active_at: lastActiveMap[r.user_id] ?? null,
   }));
 
-  // ── 7. Apply search + blok filter in JS ───────────────────────────────────
+  // ── 8. Apply search + blok filter in JS ───────────────────────────────────
   const filtered = allWarga.filter((w) => {
     const matchSearch =
       !q ||
@@ -151,20 +175,19 @@ export async function GET(request: NextRequest) {
       (w.blok_rumah ?? "").toLowerCase().includes(q);
 
     const matchBlok =
-      !blokFilter ||
-      (w.blok_rumah ?? "").toLowerCase() === blokFilter;
+      !blokFilter || (w.blok_rumah ?? "").toLowerCase() === blokFilter;
 
     return matchSearch && matchBlok;
   });
 
-  // ── 8. Build distinct blok list for filter pills ──────────────────────────
+  // ── 9. Build distinct blok list for filter pills ──────────────────────────
   const blokSet = new Set<string>();
   allWarga.forEach((w) => {
     if (w.blok_rumah) blokSet.add(w.blok_rumah);
   });
   const blokList = Array.from(blokSet).sort();
 
-  // ── 9. Paginate ────────────────────────────────────────────────────────────
+  // ── 10. Paginate ───────────────────────────────────────────────────────────
   const total = filtered.length;
   const offset = (page - 1) * limit;
   const warga = filtered.slice(offset, offset + limit);

@@ -6,6 +6,7 @@ import {
   ArrowPathIcon,
   CalendarDaysIcon,
   ChevronLeftIcon,
+  ClockIcon,
   MagnifyingGlassIcon,
   PhoneIcon,
   ShieldCheckIcon,
@@ -26,6 +27,7 @@ interface WargaItem {
   wa_number: string | null;
   blok_rumah: string | null;
   joined_at: string | null;
+  last_active_at: string | null;
   roles: string[];
 }
 
@@ -48,6 +50,27 @@ function getInitials(name: string): string {
 function formatJoinedDate(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatLastActive(iso: string | null): string {
+  if (!iso) return "Tidak diketahui";
+  const date = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+
+  if (diffSec < 60) return "Baru saja";
+  if (diffMin < 60) return `${diffMin} menit lalu`;
+  if (diffHour < 24) return `${diffHour} jam lalu`;
+  if (diffDay < 7) return `${diffDay} hari lalu`;
+  return date.toLocaleDateString("id-ID", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -375,8 +398,7 @@ export default function AdminWargaPage() {
             </button>
 
             {blokList.map((blok) => {
-              const isActive =
-                activeBlok.toLowerCase() === blok.toLowerCase();
+              const isActive = activeBlok.toLowerCase() === blok.toLowerCase();
               return (
                 <button
                   key={blok}
@@ -422,6 +444,7 @@ export default function AdminWargaPage() {
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <div className="h-3 w-24 rounded bg-app-surface-alt" />
                   <div className="h-3 w-28 rounded bg-app-surface-alt" />
+                  <div className="col-span-2 h-3 w-36 rounded bg-app-surface-alt" />
                 </div>
               </div>
             ))}
@@ -511,7 +534,9 @@ export default function AdminWargaPage() {
                   <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] text-app-body-muted">
                     <div className="flex items-center gap-1.5">
                       <PhoneIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                      <span className="truncate">{maskWA(warga.wa_number)}</span>
+                      <span className="truncate">
+                        {maskWA(warga.wa_number)}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <CalendarDaysIcon
@@ -520,6 +545,21 @@ export default function AdminWargaPage() {
                       />
                       <span className="truncate">
                         Bergabung {formatJoinedDate(warga.joined_at)}
+                      </span>
+                    </div>
+                    <div className="col-span-2 flex items-center gap-1.5">
+                      <ClockIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      <span className="truncate">
+                        Aktif:{" "}
+                        <span
+                          className={
+                            warga.last_active_at
+                              ? "font-medium text-app-body"
+                              : "italic"
+                          }
+                        >
+                          {formatLastActive(warga.last_active_at)}
+                        </span>
                       </span>
                     </div>
                     {warga.roles.length > 1 && (

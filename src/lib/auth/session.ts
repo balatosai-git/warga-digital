@@ -7,6 +7,10 @@ import { uuidv7 } from "uuidv7";
 const SESSION_COOKIE = "wd_session";
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
 
+// Throttle last_active_at writes: only update when the stored value is
+// older than this threshold to avoid a DB write on every single request.
+const LAST_ACTIVE_SYNC_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
 function hashToken(token: string): string {
   return hashSha256(token);
 }
@@ -55,12 +59,26 @@ export async function getSessionFromCookie(): Promise<{
   const supabase = createServerClient();
   const { data: session } = await supabase
     .from("sessions")
-    .select("id, user_id, expires_at")
+    .select("id, user_id, expires_at, last_active_at")
     .eq("id", payload.sessionId)
     .single();
 
   if (!session || new Date(session.expires_at) < new Date()) {
     return null;
+  }
+
+  // ── Sync last_active_at back to Supabase (throttled) ──────────────────────
+  // Fire-and-forget: do not await so we never block the request path.
+  const lastActive = session.last_active_at
+    ? new Date(session.last_active_at).getTime()
+    : 0;
+  const isStale = Date.now() - lastActive > LAST_ACTIVE_SYNC_INTERVAL_MS;
+
+  if (isStale) {
+    void supabase
+      .from("sessions")
+      .update({ last_active_at: new Date().toISOString() })
+      .eq("id", payload.sessionId);
   }
 
   return { userId: payload.userId, sessionId: payload.sessionId };
