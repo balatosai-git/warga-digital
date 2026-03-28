@@ -3,7 +3,6 @@ import { getSessionFromCookie } from "@/lib/auth/session";
 import { createServerClient } from "@/lib/supabase/server";
 
 const AVATAR_BUCKET = "avatars";
-const MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 
 /**
@@ -23,26 +22,21 @@ export async function POST(request: NextRequest) {
     if (!file || !(file instanceof File)) {
       return NextResponse.json(
         { error: "File tidak ditemukan. Gunakan field 'file'." },
-        { status: 400 }
-      );
-    }
-
-    if (file.size > MAX_SIZE_BYTES) {
-      return NextResponse.json(
-        { error: "Ukuran file maksimal 2 MB." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
       return NextResponse.json(
         { error: "Format tidak didukung. Gunakan JPEG, PNG, WebP, atau HEIC." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-    const safeExt = ["jpeg", "jpg", "png", "webp", "heic"].includes(ext) ? ext : "jpg";
+    const safeExt = ["jpeg", "jpg", "png", "webp", "heic"].includes(ext)
+      ? ext
+      : "jpg";
     const path = `${session.userId}/avatar.${safeExt}`;
 
     const supabase = createServerClient();
@@ -57,7 +51,7 @@ export async function POST(request: NextRequest) {
       console.error("[Profile avatar] Upload error:", uploadError);
       return NextResponse.json(
         { error: "Gagal mengunggah foto. Coba lagi." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -74,7 +68,7 @@ export async function POST(request: NextRequest) {
       console.error("[Profile avatar] Update user error:", updateError);
       return NextResponse.json(
         { error: "Gagal menyimpan referensi foto." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -91,7 +85,7 @@ export async function POST(request: NextRequest) {
     console.error("[Profile avatar] Error:", err);
     return NextResponse.json(
       { error: "Gagal mengunggah foto profil." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

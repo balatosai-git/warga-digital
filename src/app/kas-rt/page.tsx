@@ -1655,9 +1655,11 @@ export default function KasRTPage() {
                   >
                     {editingTxId ? "Edit Transaksi" : "Catat Transaksi"}
                   </h2>
-                  <p className="mt-0.5 text-xs text-app-body-muted">
-                    Langkah {formStep} dari 3
-                  </p>
+                  {!editingTxId && (
+                    <p className="mt-0.5 text-xs text-app-body-muted">
+                      Langkah {formStep} dari 3
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -1671,133 +1673,26 @@ export default function KasRTPage() {
               </div>
 
               {/* Step indicator */}
-              <div className="mb-5 flex gap-2">
-                {([1, 2, 3] as const).map((step) => (
-                  <button
-                    key={step}
-                    type="button"
-                    onClick={() => {
-                      if (step === 3) reApplyTemplatesWithBlok();
-                      setFormStep(step);
-                    }}
-                    className="h-1.5 flex-1 rounded-full transition-all"
-                    style={stepButtonStyle(step)}
-                    aria-label={`Langkah ${step}`}
-                  />
-                ))}
-              </div>
+              {!editingTxId && (
+                <div className="mb-5 flex gap-2">
+                  {([1, 2, 3] as const).map((step) => (
+                    <button
+                      key={step}
+                      type="button"
+                      onClick={() => {
+                        if (step === 3) reApplyTemplatesWithBlok();
+                        setFormStep(step);
+                      }}
+                      className="h-1.5 flex-1 rounded-full transition-all"
+                      style={stepButtonStyle(step)}
+                      aria-label={`Langkah ${step}`}
+                    />
+                  ))}
+                </div>
+              )}
 
               <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-                {/* ── Step 1: Jenis + Kategori ──────────────────────────── */}
-                {formStep === 1 && (
-                  <div className="space-y-4">
-                    {/* Type toggle */}
-                    <div>
-                      <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-app-body-muted">
-                        Jenis Transaksi
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {(["income", "expense"] as TransactionType[]).map(
-                          (value) => {
-                            const active = form.type === value;
-                            return (
-                              <button
-                                key={value}
-                                type="button"
-                                onClick={() => handleTypeChange(value)}
-                                className={`rounded-2xl border py-3 text-sm font-bold transition active:scale-95 ${
-                                  active
-                                    ? "text-white shadow-sm"
-                                    : "bg-white text-app-body-muted"
-                                }`}
-                                style={
-                                  active
-                                    ? value === "income"
-                                      ? {
-                                          background:
-                                            "rgba(13, 148, 136, 0.15)",
-                                          borderColor:
-                                            "rgba(13, 148, 136, 0.3)",
-                                          color: "var(--color-primary)",
-                                        }
-                                      : {
-                                          background: "rgba(220, 38, 38, 0.15)",
-                                          borderColor: "rgba(220, 38, 38, 0.3)",
-                                          color: "#dc2626",
-                                        }
-                                    : {
-                                        borderColor:
-                                          "var(--color-input-border)",
-                                      }
-                                }
-                              >
-                                {value === "income"
-                                  ? "➕ Pemasukan"
-                                  : "➖ Pengeluaran"}
-                              </button>
-                            );
-                          },
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Category selection */}
-                    <div>
-                      <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-app-body-muted">
-                        Kategori{" "}
-                        <span className="font-normal normal-case text-red-500">
-                          *
-                        </span>
-                      </p>
-                      {visibleCategories.length === 0 ? (
-                        <div className="animate-pulse rounded-2xl bg-app-surface-alt p-8" />
-                      ) : (
-                        <div className="grid max-h-52 grid-cols-2 gap-2 overflow-y-auto">
-                          {visibleCategories.map((cat) => {
-                            const isSelected = form.categoryId === cat.id;
-                            return (
-                              <button
-                                key={cat.id}
-                                type="button"
-                                onClick={() => handleCategoryChange(cat.id)}
-                                className={`rounded-2xl border px-3 py-2.5 text-left text-sm font-medium transition active:scale-[0.97] ${
-                                  isSelected
-                                    ? "text-white shadow-sm"
-                                    : "bg-white text-app-body"
-                                }`}
-                                style={
-                                  isSelected
-                                    ? isIncomeForm
-                                      ? {
-                                          background:
-                                            "var(--color-primary-light, rgba(13, 148, 136, 0.15))",
-                                          borderColor:
-                                            "var(--color-primary-light, rgba(13, 148, 136, 0.3))",
-                                          color: "var(--color-primary)",
-                                        }
-                                      : {
-                                          background: "rgba(220, 38, 38, 0.15)",
-                                          borderColor: "rgba(220, 38, 38, 0.3)",
-                                          color: "#dc2626",
-                                        }
-                                    : {
-                                        borderColor:
-                                          "var(--color-input-border)",
-                                      }
-                                }
-                              >
-                                {cat.name}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Step 2: Jumlah, Tanggal, Blok ────────────────────── */}
-                {formStep === 2 && (
+                {editingTxId ? (
                   <div className="space-y-4">
                     {/* Amount */}
                     <div>
@@ -1826,6 +1721,7 @@ export default function KasRTPage() {
                           }
                           className="flex-1 bg-transparent text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 outline-none"
                           placeholder="0"
+                          autoFocus
                           onFocus={(e) => {
                             const parent = e.currentTarget.parentElement;
                             if (parent) applyFocusRing(parent as HTMLElement);
@@ -1838,35 +1734,10 @@ export default function KasRTPage() {
                       </div>
                     </div>
 
-                    {/* Date */}
-                    <div>
-                      <label
-                        htmlFor="form-date"
-                        className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
-                      >
-                        Tanggal{" "}
-                        <span className="font-normal normal-case text-red-500">
-                          *
-                        </span>
-                      </label>
-                      <input
-                        id="form-date"
-                        type="date"
-                        value={form.date}
-                        onChange={(e) =>
-                          updateFormField("date", e.target.value)
-                        }
-                        className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title focus:outline-none"
-                        style={{ borderColor: "var(--color-input-border)" }}
-                        onFocus={(e) => applyFocusRing(e.currentTarget)}
-                        onBlur={(e) => clearFocusRing(e.currentTarget)}
-                      />
-                    </div>
-
                     {/* Blok */}
                     <div>
                       <label
-                        htmlFor="form-reference"
+                        htmlFor="edit-reference"
                         className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
                       >
                         Blok{" "}
@@ -1875,7 +1746,7 @@ export default function KasRTPage() {
                         </span>
                       </label>
                       <input
-                        id="form-reference"
+                        id="edit-reference"
                         type="text"
                         value={form.reference}
                         onChange={(e) =>
@@ -1889,201 +1760,489 @@ export default function KasRTPage() {
                         onBlur={(e) => clearFocusRing(e.currentTarget)}
                       />
                     </div>
-                  </div>
-                )}
 
-                {/* ── Step 3: Judul, Deskripsi, Lampiran ───────────────── */}
-                {formStep === 3 && (
-                  <div className="space-y-4">
-                    {/* Title */}
+                    {/* Tanggal */}
                     <div>
                       <label
-                        htmlFor="form-title"
+                        htmlFor="edit-date"
                         className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
                       >
-                        Judul Transaksi{" "}
+                        Tanggal{" "}
                         <span className="font-normal normal-case text-red-500">
                           *
                         </span>
                       </label>
                       <input
-                        id="form-title"
-                        type="text"
-                        value={form.title}
+                        id="edit-date"
+                        type="date"
+                        value={form.date}
                         onChange={(e) =>
-                          updateFormField("title", e.target.value)
+                          updateFormField("date", e.target.value)
                         }
-                        placeholder="Contoh: IPL Bulan Juni"
-                        className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 focus:outline-none"
+                        className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title focus:outline-none"
                         style={{ borderColor: "var(--color-input-border)" }}
                         onFocus={(e) => applyFocusRing(e.currentTarget)}
                         onBlur={(e) => clearFocusRing(e.currentTarget)}
                       />
                     </div>
 
-                    {/* Description */}
-                    <div>
-                      <label
-                        htmlFor="form-details"
-                        className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
+                    {/* Error banner */}
+                    {formError && (
+                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+                        <p className="text-[13px] text-red-600">{formError}</p>
+                      </div>
+                    )}
+
+                    {/* Buttons */}
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={closeForm}
+                        disabled={isSubmitting}
+                        className="flex-1 rounded-2xl py-3 text-sm font-bold text-app-body transition hover:bg-app-surface-alt active:scale-95 disabled:opacity-50"
+                        style={{ background: "var(--color-surface-alt)" }}
                       >
-                        Deskripsi{" "}
-                        <span className="font-normal normal-case text-app-body-muted/70">
-                          (opsional)
-                        </span>
-                      </label>
-                      <textarea
-                        id="form-details"
-                        value={form.details}
-                        onChange={(e) =>
-                          updateFormField("details", e.target.value)
-                        }
-                        rows={3}
-                        placeholder="Catatan, rincian biaya, dll."
-                        className="w-full resize-none rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 focus:outline-none"
-                        style={{ borderColor: "var(--color-input-border)" }}
-                        onFocus={(e) => applyFocusRing(e.currentTarget)}
-                        onBlur={(e) => clearFocusRing(e.currentTarget)}
-                      />
+                        Batal
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!isStep2Valid || isSubmitting}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleSubmit(
+                            e as unknown as React.FormEvent<HTMLFormElement>,
+                          );
+                        }}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                        style={actionButtonStyle(!isStep2Valid || isSubmitting)}
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                            Menyimpan...
+                          </>
+                        ) : (
+                          "Simpan"
+                        )}
+                      </button>
                     </div>
-
-                    {/* Attachments */}
-                    {!editingTxId ? (
-                      <div>
-                        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-app-body-muted">
-                          Lampiran{" "}
-                          <span className="font-normal normal-case text-app-body-muted/70">
-                            (opsional)
-                          </span>
-                        </p>
-                        <div
-                          className="flex items-center gap-3 rounded-2xl border bg-white px-4 py-3"
-                          style={{ borderColor: "var(--color-input-border)" }}
-                        >
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            multiple
-                            onChange={(e) => {
-                              const files = e.target.files;
-                              if (!files?.length)
-                                setAttachmentLabel("Belum ada file dipilih");
-                              else if (files.length === 1)
-                                setAttachmentLabel(files[0].name);
-                              else
-                                setAttachmentLabel(
-                                  `${files.length} file dipilih`,
+                  </div>
+                ) : (
+                  <>
+                    {/* ── Step 1: Jenis + Kategori ──────────────────────────── */}
+                    {formStep === 1 && (
+                      <div className="space-y-4">
+                        {/* Type toggle */}
+                        <div>
+                          <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-app-body-muted">
+                            Jenis Transaksi
+                          </p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {(["income", "expense"] as TransactionType[]).map(
+                              (value) => {
+                                const active = form.type === value;
+                                return (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() => handleTypeChange(value)}
+                                    className={`rounded-2xl border py-3 text-sm font-bold transition active:scale-95 ${
+                                      active
+                                        ? "text-white shadow-sm"
+                                        : "bg-white text-app-body-muted"
+                                    }`}
+                                    style={
+                                      active
+                                        ? value === "income"
+                                          ? {
+                                              background:
+                                                "rgba(13, 148, 136, 0.15)",
+                                              borderColor:
+                                                "rgba(13, 148, 136, 0.3)",
+                                              color: "var(--color-primary)",
+                                            }
+                                          : {
+                                              background:
+                                                "rgba(220, 38, 38, 0.15)",
+                                              borderColor:
+                                                "rgba(220, 38, 38, 0.3)",
+                                              color: "#dc2626",
+                                            }
+                                        : {
+                                            borderColor:
+                                              "var(--color-input-border)",
+                                          }
+                                    }
+                                  >
+                                    {value === "income"
+                                      ? "➕ Pemasukan"
+                                      : "➖ Pengeluaran"}
+                                  </button>
                                 );
-                            }}
-                            className="absolute h-0 w-0 opacity-0"
-                            id="kas-rt-attachment-input"
-                          />
-                          <label
-                            htmlFor="kas-rt-attachment-input"
-                            className="shrink-0 cursor-pointer rounded-xl px-3 py-1.5 text-xs font-bold text-white transition active:scale-90"
-                            style={{ background: "var(--color-primary)" }}
-                          >
-                            Pilih File
-                          </label>
-                          <span className="flex-1 truncate text-xs text-app-body-muted">
-                            {attachmentLabel}
-                          </span>
+                              },
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Category selection */}
+                        <div>
+                          <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-app-body-muted">
+                            Kategori{" "}
+                            <span className="font-normal normal-case text-red-500">
+                              *
+                            </span>
+                          </p>
+                          {visibleCategories.length === 0 ? (
+                            <div className="animate-pulse rounded-2xl bg-app-surface-alt p-8" />
+                          ) : (
+                            <div className="grid max-h-52 grid-cols-2 gap-2 overflow-y-auto">
+                              {visibleCategories.map((cat) => {
+                                const isSelected = form.categoryId === cat.id;
+                                return (
+                                  <button
+                                    key={cat.id}
+                                    type="button"
+                                    onClick={() => handleCategoryChange(cat.id)}
+                                    className={`rounded-2xl border px-3 py-2.5 text-left text-sm font-medium transition active:scale-[0.97] ${
+                                      isSelected
+                                        ? "text-white shadow-sm"
+                                        : "bg-white text-app-body"
+                                    }`}
+                                    style={
+                                      isSelected
+                                        ? isIncomeForm
+                                          ? {
+                                              background:
+                                                "var(--color-primary-light, rgba(13, 148, 136, 0.15))",
+                                              borderColor:
+                                                "var(--color-primary-light, rgba(13, 148, 136, 0.3))",
+                                              color: "var(--color-primary)",
+                                            }
+                                          : {
+                                              background:
+                                                "rgba(220, 38, 38, 0.15)",
+                                              borderColor:
+                                                "rgba(220, 38, 38, 0.3)",
+                                              color: "#dc2626",
+                                            }
+                                        : {
+                                            borderColor:
+                                              "var(--color-input-border)",
+                                          }
+                                    }
+                                  >
+                                    {cat.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
-                    ) : (
-                      <p className="text-xs italic text-app-body-muted/70">
-                        Lampiran tidak dapat diubah pada mode edit.
-                      </p>
                     )}
-                  </div>
-                )}
 
-                {/* Error banner */}
-                {formError && (
-                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
-                    <p className="text-[13px] text-red-600">{formError}</p>
-                  </div>
-                )}
+                    {/* ── Step 2: Jumlah, Tanggal, Blok ────────────────────── */}
+                    {formStep === 2 && (
+                      <div className="space-y-4">
+                        {/* Amount */}
+                        <div>
+                          <label className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted">
+                            Jumlah{" "}
+                            <span className="font-normal normal-case text-red-500">
+                              *
+                            </span>
+                          </label>
+                          <div
+                            className="flex items-center gap-2 rounded-2xl border bg-white px-4 py-3 transition-all"
+                            style={{ borderColor: "var(--color-input-border)" }}
+                          >
+                            <span className="text-sm font-bold text-app-body-muted">
+                              Rp
+                            </span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={formatAmountDisplay(form.amount)}
+                              onChange={(e) =>
+                                updateFormField(
+                                  "amount",
+                                  parseAmountInput(e.target.value),
+                                )
+                              }
+                              className="flex-1 bg-transparent text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 outline-none"
+                              placeholder="0"
+                              onFocus={(e) => {
+                                const parent = e.currentTarget.parentElement;
+                                if (parent)
+                                  applyFocusRing(parent as HTMLElement);
+                              }}
+                              onBlur={(e) => {
+                                const parent = e.currentTarget.parentElement;
+                                if (parent)
+                                  clearFocusRing(parent as HTMLElement);
+                              }}
+                            />
+                          </div>
+                        </div>
 
-                {/* Navigation buttons */}
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      formStep > 1
-                        ? setFormStep((s) => (s - 1) as 1 | 2 | 3)
-                        : closeForm()
-                    }
-                    disabled={isSubmitting}
-                    className="flex-1 rounded-2xl py-3 text-sm font-bold text-app-body transition hover:bg-app-surface-alt active:scale-95 disabled:opacity-50"
-                    style={{ background: "var(--color-surface-alt)" }}
-                  >
-                    {formStep > 1 ? "Kembali" : "Batal"}
-                  </button>
+                        {/* Date */}
+                        <div>
+                          <label
+                            htmlFor="form-date"
+                            className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
+                          >
+                            Tanggal{" "}
+                            <span className="font-normal normal-case text-red-500">
+                              *
+                            </span>
+                          </label>
+                          <input
+                            id="form-date"
+                            type="date"
+                            value={form.date}
+                            onChange={(e) =>
+                              updateFormField("date", e.target.value)
+                            }
+                            className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title focus:outline-none"
+                            style={{ borderColor: "var(--color-input-border)" }}
+                            onFocus={(e) => applyFocusRing(e.currentTarget)}
+                            onBlur={(e) => clearFocusRing(e.currentTarget)}
+                          />
+                        </div>
 
-                  {formStep < 3 ? (
-                    <button
-                      type="button"
-                      disabled={nextButtonDisabled}
-                      onClick={() => {
-                        if (formStep === 2) {
-                          reApplyTemplatesWithBlok();
-                          const formMonth = new Date(form.date).getMonth();
-                          const formYear = new Date(form.date).getFullYear();
-                          const formBlock = form.reference.trim().toLowerCase();
-                          const matches = transactions.filter((tx) => {
-                            if (editingTxId && tx.id === editingTxId)
-                              return false;
-                            const d = new Date(tx.date);
-                            return (
-                              (tx.reference ?? "").trim().toLowerCase() ===
-                                formBlock &&
-                              d.getMonth() === formMonth &&
-                              d.getFullYear() === formYear
-                            );
-                          });
-                          if (matches.length > 0) {
-                            setDuplicateWarning({
-                              matches,
-                              onConfirm: () => {
-                                setDuplicateWarning(null);
-                                setFormStep(3);
-                              },
-                            });
-                            return;
-                          }
+                        {/* Blok */}
+                        <div>
+                          <label
+                            htmlFor="form-reference"
+                            className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
+                          >
+                            Blok{" "}
+                            <span className="font-normal normal-case text-red-500">
+                              *
+                            </span>
+                          </label>
+                          <input
+                            id="form-reference"
+                            type="text"
+                            value={form.reference}
+                            onChange={(e) =>
+                              updateFormField("reference", e.target.value)
+                            }
+                            placeholder="Contoh: N2"
+                            maxLength={20}
+                            className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 focus:outline-none"
+                            style={{ borderColor: "var(--color-input-border)" }}
+                            onFocus={(e) => applyFocusRing(e.currentTarget)}
+                            onBlur={(e) => clearFocusRing(e.currentTarget)}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Step 3: Judul, Deskripsi, Lampiran ───────────────── */}
+                    {formStep === 3 && (
+                      <div className="space-y-4">
+                        {/* Title */}
+                        <div>
+                          <label
+                            htmlFor="form-title"
+                            className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
+                          >
+                            Judul Transaksi{" "}
+                            <span className="font-normal normal-case text-red-500">
+                              *
+                            </span>
+                          </label>
+                          <input
+                            id="form-title"
+                            type="text"
+                            value={form.title}
+                            onChange={(e) =>
+                              updateFormField("title", e.target.value)
+                            }
+                            placeholder="Contoh: IPL Bulan Juni"
+                            className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 focus:outline-none"
+                            style={{ borderColor: "var(--color-input-border)" }}
+                            onFocus={(e) => applyFocusRing(e.currentTarget)}
+                            onBlur={(e) => clearFocusRing(e.currentTarget)}
+                          />
+                        </div>
+
+                        {/* Description */}
+                        <div>
+                          <label
+                            htmlFor="form-details"
+                            className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
+                          >
+                            Deskripsi{" "}
+                            <span className="font-normal normal-case text-app-body-muted/70">
+                              (opsional)
+                            </span>
+                          </label>
+                          <textarea
+                            id="form-details"
+                            value={form.details}
+                            onChange={(e) =>
+                              updateFormField("details", e.target.value)
+                            }
+                            rows={3}
+                            placeholder="Catatan, rincian biaya, dll."
+                            className="w-full resize-none rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 focus:outline-none"
+                            style={{ borderColor: "var(--color-input-border)" }}
+                            onFocus={(e) => applyFocusRing(e.currentTarget)}
+                            onBlur={(e) => clearFocusRing(e.currentTarget)}
+                          />
+                        </div>
+
+                        {/* Attachments */}
+                        {!editingTxId ? (
+                          <div>
+                            <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-app-body-muted">
+                              Lampiran{" "}
+                              <span className="font-normal normal-case text-app-body-muted/70">
+                                (opsional)
+                              </span>
+                            </p>
+                            <div
+                              className="flex items-center gap-3 rounded-2xl border bg-white px-4 py-3"
+                              style={{
+                                borderColor: "var(--color-input-border)",
+                              }}
+                            >
+                              <input
+                                ref={fileInputRef}
+                                type="file"
+                                multiple
+                                onChange={(e) => {
+                                  const files = e.target.files;
+                                  if (!files?.length)
+                                    setAttachmentLabel(
+                                      "Belum ada file dipilih",
+                                    );
+                                  else if (files.length === 1)
+                                    setAttachmentLabel(files[0].name);
+                                  else
+                                    setAttachmentLabel(
+                                      `${files.length} file dipilih`,
+                                    );
+                                }}
+                                className="absolute h-0 w-0 opacity-0"
+                                id="kas-rt-attachment-input"
+                              />
+                              <label
+                                htmlFor="kas-rt-attachment-input"
+                                className="shrink-0 cursor-pointer rounded-xl px-3 py-1.5 text-xs font-bold text-white transition active:scale-90"
+                                style={{ background: "var(--color-primary)" }}
+                              >
+                                Pilih File
+                              </label>
+                              <span className="flex-1 truncate text-xs text-app-body-muted">
+                                {attachmentLabel}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs italic text-app-body-muted/70">
+                            Lampiran tidak dapat diubah pada mode edit.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Error banner */}
+                    {formError && (
+                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
+                        <p className="text-[13px] text-red-600">{formError}</p>
+                      </div>
+                    )}
+
+                    {/* Navigation buttons */}
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          formStep > 1
+                            ? setFormStep((s) => (s - 1) as 1 | 2 | 3)
+                            : closeForm()
                         }
-                        setFormStep((s) => (s + 1) as 1 | 2 | 3);
-                      }}
-                      className="flex-1 rounded-2xl py-3 text-sm font-bold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-                      style={actionButtonStyle(nextButtonDisabled)}
-                    >
-                      Lanjut
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={!isFormValid || isSubmitting}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleSubmit(
-                          e as unknown as React.FormEvent<HTMLFormElement>,
-                        );
-                      }}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-                      style={actionButtonStyle(!isFormValid || isSubmitting)}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                          Menyimpan...
-                        </>
+                        disabled={isSubmitting}
+                        className="flex-1 rounded-2xl py-3 text-sm font-bold text-app-body transition hover:bg-app-surface-alt active:scale-95 disabled:opacity-50"
+                        style={{ background: "var(--color-surface-alt)" }}
+                      >
+                        {formStep > 1 ? "Kembali" : "Batal"}
+                      </button>
+
+                      {formStep < 3 ? (
+                        <button
+                          type="button"
+                          disabled={nextButtonDisabled}
+                          onClick={() => {
+                            if (formStep === 2) {
+                              reApplyTemplatesWithBlok();
+                              const formMonth = new Date(form.date).getMonth();
+                              const formYear = new Date(
+                                form.date,
+                              ).getFullYear();
+                              const formBlock = form.reference
+                                .trim()
+                                .toLowerCase();
+                              const matches = transactions.filter((tx) => {
+                                if (editingTxId && tx.id === editingTxId)
+                                  return false;
+                                const d = new Date(tx.date);
+                                return (
+                                  (tx.reference ?? "").trim().toLowerCase() ===
+                                    formBlock &&
+                                  d.getMonth() === formMonth &&
+                                  d.getFullYear() === formYear
+                                );
+                              });
+                              if (matches.length > 0) {
+                                setDuplicateWarning({
+                                  matches,
+                                  onConfirm: () => {
+                                    setDuplicateWarning(null);
+                                    setFormStep(3);
+                                  },
+                                });
+                                return;
+                              }
+                            }
+                            setFormStep((s) => (s + 1) as 1 | 2 | 3);
+                          }}
+                          className="flex-1 rounded-2xl py-3 text-sm font-bold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                          style={actionButtonStyle(nextButtonDisabled)}
+                        >
+                          Lanjut
+                        </button>
                       ) : (
-                        "Simpan"
+                        <button
+                          type="button"
+                          disabled={!isFormValid || isSubmitting}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleSubmit(
+                              e as unknown as React.FormEvent<HTMLFormElement>,
+                            );
+                          }}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                          style={actionButtonStyle(
+                            !isFormValid || isSubmitting,
+                          )}
+                        >
+                          {isSubmitting ? (
+                            <>
+                              <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                              Menyimpan...
+                            </>
+                          ) : (
+                            "Simpan"
+                          )}
+                        </button>
                       )}
-                    </button>
-                  )}
-                </div>
+                    </div>
+                  </>
+                )}
               </form>
             </div>
           </div>
