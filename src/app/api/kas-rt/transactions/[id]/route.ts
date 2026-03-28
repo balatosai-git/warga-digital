@@ -11,9 +11,7 @@ import {
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
-async function requireKasRtRole(): Promise<
-  { userId: string } | NextResponse
-> {
+async function requireKasRtRole(): Promise<{ userId: string } | NextResponse> {
   const session = await getSessionFromCookie();
   if (!session) {
     return NextResponse.json(
@@ -53,10 +51,132 @@ async function requireKasRtRole(): Promise<
   return { userId: session.userId };
 }
 
+// ── Notification helper ───────────────────────────────────────────────────────
+//
+// Sends a KAS_RT notification to every active authorized manager
+// (ROLE_IDS_CAN_SUBMIT_KAS_RT) EXCEPT the user who performed the action.
+
+async function sendKasRtNotification(
+  supabase: ReturnType<typeof createServerClient>,
+  tenantId: string,
+  actorUserId: string,
+  transactionId: string,
+  transactionTitle: string,
+  transactionAmount: number,
+  transactionType: "income" | "expense",
+  date: string,
+  action: "UPDATED" | "DELETED",
+) {
+  try {
+    // 1. Resolve actor's full name
+    const { data: actorUser } = await supabase
+      .from("users")
+      .select("full_name")
+      .eq("id", actorUserId)
+      .maybeSingle();
+
+    const actorFullName = actorUser?.full_name?.trim() || "Seseorang";
+
+    // 2. Get all tenant_user row IDs that carry a kas-rt role (non-revoked)
+    const { data: roleRows, error: roleErr } = await supabase
+      .from("tenant_user_roles")
+      .select("tenant_user_id")
+      .in("role_id", ROLE_IDS_CAN_SUBMIT_KAS_RT)
+      .is("revoked_at", null);
+
+    if (roleErr) {
+      console.error("[Kas RT] Fetch role rows error:", roleErr);
+      return;
+    }
+
+    if (!roleRows?.length) return;
+
+    const authorizedTenantUserIds = roleRows.map((r) => r.tenant_user_id);
+
+    // 3. Resolve to user_ids: active, in this tenant, NOT the actor
+    const { data: tenantUsers, error: tuErr } = await supabase
+      .from("tenant_users")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "ACTIVE")
+      .in("id", authorizedTenantUserIds)
+      .neq("user_id", actorUserId);
+
+    if (tuErr) {
+      console.error("[Kas RT] Fetch recipients error:", tuErr);
+      return;
+    }
+
+    if (!tenantUsers?.length) return;
+
+    const uniqueRecipients = Array.from(
+      new Set(tenantUsers.map((r) => r.user_id).filter(Boolean)),
+    );
+
+    if (uniqueRecipients.length === 0) return;
+
+    // 4. Build notification content
+    const titleMap: Record<"UPDATED" | "DELETED", string> = {
+      UPDATED:
+        transactionType === "income"
+          ? "Pemasukan Kas RT Diperbarui"
+          : "Pengeluaran Kas RT Diperbarui",
+      DELETED:
+        transactionType === "income"
+          ? "Pemasukan Kas RT Dihapus"
+          : "Pengeluaran Kas RT Dihapus",
+    };
+
+    const actionLabelMap: Record<"UPDATED" | "DELETED", string> = {
+      UPDATED: "Diperbarui oleh",
+      DELETED: "Dihapus oleh",
+    };
+
+    const body =
+      `${transactionTitle.trim()} – Rp ${Math.round(transactionAmount).toLocaleString("id-ID")}` +
+      ` · ${actionLabelMap[action]}: ${actorFullName}`;
+
+    // 5. Insert one notification row per recipient
+    const notificationRows = uniqueRecipients.map((recipientUserId) => ({
+      tenant_id: tenantId,
+      recipient_user_id: recipientUserId,
+      actor_user_id: actorUserId,
+      type: "KAS_RT",
+      priority: "NORMAL",
+      title: titleMap[action],
+      body,
+      action_url: "/kas-rt",
+      entity_table: "kas_rt_transactions",
+      entity_id: transactionId,
+      dedupe_key: `kas_rt_transaction:${transactionId}:${action}:to:${recipientUserId}`,
+      metadata: {
+        transactionId,
+        transactionType,
+        amount: transactionAmount,
+        date,
+        action,
+        actorFullName,
+      },
+      created_by: actorUserId,
+    }));
+
+    const { error: notifErr } = await supabase
+      .from("notifications")
+      .insert(notificationRows);
+
+    if (notifErr) {
+      console.error("[Kas RT] Insert notifications error:", notifErr);
+    }
+  } catch (error) {
+    console.error("[Kas RT] Unexpected notification error:", error);
+  }
+}
+
 // ── PATCH /api/kas-rt/transactions/[id] ──────────────────────────────────────
 //
 // Edit an existing transaction. Only fields present in the body are updated.
-// Authorised roles: same as POST (ROLE_IDS_CAN_SUBMIT_KAS_RT).
+// Authorised roles: ROLE_IDS_CAN_SUBMIT_KAS_RT.
+// Notifies all other authorized managers with the editor's name.
 
 export async function PATCH(
   request: NextRequest,
@@ -163,7 +283,7 @@ export async function PATCH(
   // Verify the transaction belongs to this tenant/community and is not deleted
   const { data: existing, error: fetchError } = await supabase
     .from("kas_rt_transactions")
-    .select("id")
+    .select("id, title, amount, type, date")
     .eq("id", id)
     .eq("tenant_id", DEFAULT_TENANT_ID)
     .eq("community_id", DEFAULT_COMMUNITY_ID)
@@ -204,6 +324,19 @@ export async function PATCH(
     );
   }
 
+  // Notify all other authorized managers about the edit
+  await sendKasRtNotification(
+    supabase,
+    DEFAULT_TENANT_ID,
+    auth.userId,
+    data.id,
+    data.title,
+    Number(data.amount),
+    data.type as "income" | "expense",
+    data.date,
+    "UPDATED",
+  );
+
   return NextResponse.json({
     id: data.id,
     title: data.title,
@@ -223,6 +356,7 @@ export async function PATCH(
 //
 // Soft-deletes a transaction by setting deleted_at = now().
 // The record is retained for audit purposes and excluded from all public reads.
+// Notifies all other authorized managers with the deleter's name.
 
 export async function DELETE(
   _request: NextRequest,
@@ -244,7 +378,7 @@ export async function DELETE(
   // Verify the transaction exists, belongs to this tenant/community, and isn't already deleted
   const { data: existing, error: fetchError } = await supabase
     .from("kas_rt_transactions")
-    .select("id, title")
+    .select("id, title, amount, type, date")
     .eq("id", id)
     .eq("tenant_id", DEFAULT_TENANT_ID)
     .eq("community_id", DEFAULT_COMMUNITY_ID)
@@ -280,6 +414,19 @@ export async function DELETE(
       { status: 500 },
     );
   }
+
+  // Notify all other authorized managers about the deletion
+  await sendKasRtNotification(
+    supabase,
+    DEFAULT_TENANT_ID,
+    auth.userId,
+    existing.id,
+    existing.title,
+    Number(existing.amount),
+    existing.type as "income" | "expense",
+    existing.date,
+    "DELETED",
+  );
 
   return NextResponse.json({
     deleted: true,
