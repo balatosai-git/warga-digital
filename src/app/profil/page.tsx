@@ -86,6 +86,7 @@ interface ProfileData {
   id: string;
   fullName: string;
   username: string | null;
+  waNumber: string | null;
   waNumberMasked: string | null;
   email: string | null;
   dateOfBirth: string | null;
@@ -570,7 +571,7 @@ export default function ProfilePage() {
         setProfile(data);
         setEditFullName(data.fullName ?? "");
         setEditUsername(data.username ?? "");
-        setEditWaNumber(data.waNumberMasked ?? "");
+        setEditWaNumber(data.waNumber ?? "");
         setEditEmail(data.email ?? "");
         setEditDateOfBirth(toDateInputValue(data.dateOfBirth));
         setValidationError(null);
@@ -604,7 +605,7 @@ export default function ProfilePage() {
       setProfile(profileData);
       setEditFullName(profileData.fullName ?? "");
       setEditUsername(profileData.username ?? "");
-      setEditWaNumber(profileData.waNumberMasked ?? "");
+      setEditWaNumber(profileData.waNumber ?? "");
       setEditEmail(profileData.email ?? "");
       setEditDateOfBirth(toDateInputValue(profileData.dateOfBirth));
       setValidationError(null);

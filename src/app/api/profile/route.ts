@@ -3,7 +3,10 @@ import { getSessionFromCookie } from "@/lib/auth/session";
 import { createServerClient } from "@/lib/supabase/server";
 import { DEFAULT_TENANT_ID } from "@/lib/constants/seed-ids";
 import { THEMES } from "@/lib/themes";
-import { normalizeWaNumber } from "@/lib/phone-utils";
+import {
+  normalizeWaNumber,
+  validateNormalizedWaNumber,
+} from "@/lib/phone-utils";
 
 /** Format IDR amount as "Rp X.XXX" / "Rp X,XJt" / "Rp X,XM" */
 function formatRupiah(amount: number): string {
@@ -421,6 +424,7 @@ export async function GET() {
       id: user.id,
       fullName: user.full_name,
       username: user.username ?? null,
+      waNumber: user.wa_number ?? null,
       waNumberMasked: maskWaNumber(user.wa_number),
       email: user.email ?? null,
       dateOfBirth: user.date_of_birth ?? null,
@@ -502,11 +506,9 @@ export async function PATCH(request: NextRequest) {
             updates[key] = null;
           } else if (typeof v === "string") {
             const normalized = normalizeWaNumber(v.trim());
-            if (!normalized) {
-              return NextResponse.json(
-                { error: "Nomor WhatsApp tidak valid" },
-                { status: 400 },
-              );
+            const waError = validateNormalizedWaNumber(normalized);
+            if (waError) {
+              return NextResponse.json({ error: waError }, { status: 400 });
             }
             updates[key] = normalized;
           }
