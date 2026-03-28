@@ -20,6 +20,7 @@ Ekosistem digital untuk warga Sawangan Regensi RT 03 — **mobile‑first onboar
   - [Local Development](#local-development)
 - [OTP Provider](#otp-provider)
 - [Project Scripts](#project-scripts)
+- [Versioning & Releases](#versioning--releases)
 - [Folder Structure](#folder-structure)
 - [Deployment](#deployment)
 - [Contributing](#contributing)
@@ -241,6 +242,50 @@ Available npm scripts (from `package.json`):
 - **`npm start`**: Run the production server.
 - **`npm run lint`**: Run ESLint using the Next.js config.
 - **`npm run db:generate`**: Generate TypeScript types from the Supabase schema into `src/types/database.generated.ts`.
+
+---
+
+## Versioning & Releases
+
+This project uses **Semantic Versioning** ([semver.org](https://semver.org/)) to manage releases.
+
+### Current Version
+
+```bash
+npm run version:info
+```
+
+View the [`VERSION`](./VERSION) file for the current version number.
+
+### Version Management Commands
+
+```bash
+# Check version info and git status
+npm run version:info
+
+# Bump version (automatically updates VERSION and package.json)
+npm run version:patch       # Bug fixes (0.1.0 → 0.1.1)
+npm run version:minor       # New features (0.1.0 → 0.2.0)
+npm run version:major       # Breaking changes (0.1.0 → 1.0.0)
+
+# Prepare a release
+npm run version:prepare [major|minor|patch]
+```
+
+### Making a Release
+
+1. **Update** [`CHANGELOG.md`](./CHANGELOG.md) with your changes
+2. **Bump** the version: `npm run version:patch` (or minor/major)
+3. **Commit**: `git commit -am "chore: release vX.Y.Z"`
+4. **Tag**: `git tag vX.Y.Z`
+5. **Push**: `git push origin main --tags`
+6. **Create** a GitHub Release from the tag
+
+### Documentation
+
+- **Complete Guide**: See [`VERSIONING.md`](./VERSIONING.md)
+- **Quick Reference**: See [`VERSIONING_QUICK_REFERENCE.md`](./VERSIONING_QUICK_REFERENCE.md)
+- **Change History**: See [`CHANGELOG.md`](./CHANGELOG.md)
 
 ---
 

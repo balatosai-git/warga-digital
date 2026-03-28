@@ -7,7 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:generate": "supabase gen types typescript --local > src/types/database.generated.ts 2>nul || supabase gen types typescript --project-id $env:SUPABASE_PROJECT_ID > src/types/database.generated.ts 2>nul || echo Run supabase link first"
+    "db:generate": "supabase gen types typescript --local > src/types/database.generated.ts 2>nul || supabase gen types typescript --project-id $env:SUPABASE_PROJECT_ID > src/types/database.generated.ts 2>nul || echo Run supabase link first",
+    "version:major": "node scripts/bump-version.js major",
+    "version:minor": "node scripts/bump-version.js minor",
+    "version:patch": "node scripts/bump-version.js patch",
+    "version:prepare": "node scripts/prepare-release.js",
+    "version:info": "node scripts/version-info.js"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

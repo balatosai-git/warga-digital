@@ -1,0 +1,79 @@
+# Warga Digital - Version Management Quick Reference
+
+## Current Version
+See: VERSION file or run `npm run version:info`
+
+## Common Commands
+
+### Check Version Info
+```bash
+npm run version:info
+```
+
+### Bump Version
+```bash
+npm run version:patch    # 0.1.0 → 0.1.1 (bug fixes)
+npm run version:minor    # 0.1.0 → 0.2.0 (new features)
+npm run version:major    # 0.1.0 → 1.0.0 (breaking changes)
+```
+
+### Prepare Release
+```bash
+npm run version:prepare [major|minor|patch]
+```
+
+## Release Checklist
+
+- [ ] All tests passing: `npm run lint && npm run build`
+- [ ] All changes committed to main branch
+- [ ] Update CHANGELOG.md (move [Unreleased] to new version)
+- [ ] Bump version: `npm run version:patch|minor|major`
+- [ ] Create commit: `git commit -am "chore: release vX.Y.Z"`
+- [ ] Create tag: `git tag vX.Y.Z`
+- [ ] Push: `git push origin main --tags`
+- [ ] Create GitHub Release from tag
+
+## Semantic Versioning Quick Reference
+
+| Change Type | Increment | When | Example |
+|---|---|---|---|
+| Breaking API changes | MAJOR | Incompatible changes | 0.1.0 → 1.0.0 |
+| New features | MINOR | New functionality | 0.1.0 → 0.2.0 |
+| Bug fixes | PATCH | Fixes & improvements | 0.1.0 → 0.1.1 |
+
+## Changelog Categories
+
+Add entries to `CHANGELOG.md` under `[Unreleased]` section:
+
+- **Added** - New features
+- **Changed** - Modified functionality
+- **Deprecated** - Will be removed soon
+- **Removed** - Removed features
+- **Fixed** - Bug fixes
+- **Security** - Security improvements/fixes
+
+## Entry Format
+
+```markdown
+### Fixed
+- OTP verification timeout on poor connections (#42)
+- Incorrect Kas RT balance calculation
+```
+
+## Files to Keep in Sync
+
+1. `VERSION` - Plain text version number
+2. `package.json` - Version field
+3. `CHANGELOG.md` - Release notes
+
+(Version bump scripts handle these automatically)
+
+## Documentation
+
+- Full guide: See `VERSIONING.md`
+- Change history: See `CHANGELOG.md`
+- Architecture notes: See `README.md`
+
+---
+
+For detailed information, see VERSIONING.md

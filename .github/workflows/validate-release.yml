@@ -1,0 +1,59 @@
+name: Validate Release
+
+# Triggered when a release tag is pushed
+# Validates that VERSION, package.json, and CHANGELOG are in sync
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  validate-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$GITHUB_REF" >> $GITHUB_OUTPUT
+
+      - name: Verify VERSION file matches tag
+        run: |
+          VERSION_FILE=$(cat VERSION)
+          TAG_VERSION=${{ steps.version.outputs.version }}
+          if [ "$VERSION_FILE" != "$TAG_VERSION" ]; then
+            echo "❌ VERSION file ($VERSION_FILE) doesn't match tag ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "✅ VERSION file matches tag: $TAG_VERSION"
+
+      - name: Verify package.json version matches tag
+        run: |
+          PACKAGE_VERSION=$(jq -r '.version' package.json)
+          TAG_VERSION=${{ steps.version.outputs.version }}
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ package.json version ($PACKAGE_VERSION) doesn't match tag ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "✅ package.json version matches tag: $TAG_VERSION"
+
+      - name: Check CHANGELOG has entry for this version
+        run: |
+          TAG_VERSION=${{ steps.version.outputs.version }}
+          if grep -q "## \[$TAG_VERSION\]" CHANGELOG.md; then
+            echo "✅ CHANGELOG has entry for v$TAG_VERSION"
+          else
+            echo "⚠️ CHANGELOG doesn't have entry for v$TAG_VERSION"
+            exit 1
+          fi
+
+      - name: Validate release structure
+        run: |
+          echo "✅ Release validation completed successfully"
