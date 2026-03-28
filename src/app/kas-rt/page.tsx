@@ -1719,7 +1719,7 @@ export default function KasRTPage() {
                               parseAmountInput(e.target.value),
                             )
                           }
-                          className="flex-1 bg-transparent text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 outline-none"
+                          className="flex-1 bg-transparent text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 outline-none focus:outline-none focus-visible:outline-0"
                           placeholder="0"
                           autoFocus
                           onFocus={(e) => {
@@ -1969,7 +1969,7 @@ export default function KasRTPage() {
                                   parseAmountInput(e.target.value),
                                 )
                               }
-                              className="flex-1 bg-transparent text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 outline-none"
+                              className="flex-1 bg-transparent text-sm font-semibold text-app-title placeholder:text-app-body-muted/50 outline-none focus:outline-none focus-visible:outline-0"
                               placeholder="0"
                               onFocus={(e) => {
                                 const parent = e.currentTarget.parentElement;
