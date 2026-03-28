@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { DEFAULT_TENANT_ID } from "@/lib/constants/seed-ids";
+import { getSessionFromCookie } from "@/lib/auth/session";
 import { requireCanManageOrganisation } from "../../require-manage";
+import { notifyAllActiveUsers } from "@/lib/notifications";
 
 const VACANT_LABEL = "Vacant";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-async function getUserDisplay(supabase: ReturnType<typeof createServerClient>, userId: string) {
+async function getUserDisplay(
+  supabase: ReturnType<typeof createServerClient>,
+  userId: string,
+) {
   const { data: user, error: uErr } = await supabase
     .from("users")
     .select("id, full_name, wa_number, avatar_path")
@@ -59,7 +64,11 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (forbidden) return forbidden;
 
   const { id } = await context.params;
-  if (!id) return NextResponse.json({ message: "ID anggota tidak valid." }, { status: 400 });
+  if (!id)
+    return NextResponse.json(
+      { message: "ID anggota tidak valid." },
+      { status: 400 },
+    );
 
   try {
     const body = (await request.json()) as { userId?: string | null };
@@ -84,15 +93,44 @@ export async function PATCH(request: Request, context: RouteContext) {
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
-        .select("id, user_id, full_name, block_name, whatsapp_number, profile_picture_url, sort_order")
+        .select(
+          "id, user_id, full_name, block_name, whatsapp_number, profile_picture_url, sort_order",
+        )
         .single();
 
       if (error) {
         // eslint-disable-next-line no-console
         console.error("[Organisation] PATCH member (vacant) error:", error);
-        return NextResponse.json({ message: "Gagal mengubah anggota." }, { status: 500 });
+        return NextResponse.json(
+          { message: "Gagal mengubah anggota." },
+          { status: 500 },
+        );
       }
-      if (!data) return NextResponse.json({ message: "Anggota tidak ditemukan." }, { status: 404 });
+      if (!data)
+        return NextResponse.json(
+          { message: "Anggota tidak ditemukan." },
+          { status: 404 },
+        );
+
+      // ── Notify all active users that the org structure changed ─────────────
+      const session = await getSessionFromCookie();
+      await notifyAllActiveUsers(
+        supabase,
+        {
+          tenant_id: DEFAULT_TENANT_ID,
+          actor_user_id: session?.userId ?? null,
+          type: "ORGANISASI",
+          priority: "NORMAL",
+          title: "Pengurus RT Diperbarui",
+          body: "Satu posisi di susunan pengurus RT telah dikosongkan.",
+          action_url: "/organisasi",
+          entity_table: "organisation_members",
+          entity_id: id,
+          created_by: session?.userId ?? null,
+        },
+        session?.userId,
+      );
+
       return NextResponse.json({
         id: data.id,
         userId: data.user_id ?? null,
@@ -108,8 +146,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     const display = await getUserDisplay(supabase, userId);
     if (!display) {
       return NextResponse.json(
-        { message: "Pengguna tidak ditemukan atau bukan warga terdaftar di komunitas ini." },
-        { status: 400 }
+        {
+          message:
+            "Pengguna tidak ditemukan atau bukan warga terdaftar di komunitas ini.",
+        },
+        { status: 400 },
       );
     }
 
@@ -123,7 +164,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!inTenant) {
       return NextResponse.json(
         { message: "Pengguna bukan warga terdaftar di komunitas ini." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -138,15 +179,44 @@ export async function PATCH(request: Request, context: RouteContext) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .select("id, user_id, full_name, block_name, whatsapp_number, profile_picture_url, sort_order")
+      .select(
+        "id, user_id, full_name, block_name, whatsapp_number, profile_picture_url, sort_order",
+      )
       .single();
 
     if (error) {
       // eslint-disable-next-line no-console
       console.error("[Organisation] PATCH member error:", error);
-      return NextResponse.json({ message: "Gagal mengubah anggota." }, { status: 500 });
+      return NextResponse.json(
+        { message: "Gagal mengubah anggota." },
+        { status: 500 },
+      );
     }
-    if (!data) return NextResponse.json({ message: "Anggota tidak ditemukan." }, { status: 404 });
+    if (!data)
+      return NextResponse.json(
+        { message: "Anggota tidak ditemukan." },
+        { status: 404 },
+      );
+
+    // ── Notify all active users that the org structure changed ───────────────
+    const session = await getSessionFromCookie();
+    await notifyAllActiveUsers(
+      supabase,
+      {
+        tenant_id: DEFAULT_TENANT_ID,
+        actor_user_id: session?.userId ?? null,
+        type: "ORGANISASI",
+        priority: "NORMAL",
+        title: "Pengurus RT Diperbarui",
+        body: `${display.full_name} telah ditambahkan ke susunan pengurus RT.`,
+        action_url: "/organisasi",
+        entity_table: "organisation_members",
+        entity_id: id,
+        metadata: { assignedUserId: userId, fullName: display.full_name },
+        created_by: session?.userId ?? null,
+      },
+      session?.userId,
+    );
 
     return NextResponse.json({
       id: data.id,
@@ -160,7 +230,10 @@ export async function PATCH(request: Request, context: RouteContext) {
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error("[Organisation] PATCH member error:", error);
-    return NextResponse.json({ message: "Gagal mengubah anggota." }, { status: 500 });
+    return NextResponse.json(
+      { message: "Gagal mengubah anggota." },
+      { status: 500 },
+    );
   }
 }
 
@@ -172,16 +245,45 @@ export async function DELETE(_request: Request, context: RouteContext) {
   if (forbidden) return forbidden;
 
   const { id } = await context.params;
-  if (!id) return NextResponse.json({ message: "ID anggota tidak valid." }, { status: 400 });
+  if (!id)
+    return NextResponse.json(
+      { message: "ID anggota tidak valid." },
+      { status: 400 },
+    );
 
   const supabase = createServerClient();
-  const { error } = await supabase.from("organisation_members").delete().eq("id", id);
+  const { error } = await supabase
+    .from("organisation_members")
+    .delete()
+    .eq("id", id);
 
   if (error) {
     // eslint-disable-next-line no-console
     console.error("[Organisation] DELETE member error:", error);
-    return NextResponse.json({ message: "Gagal menghapus anggota." }, { status: 500 });
+    return NextResponse.json(
+      { message: "Gagal menghapus anggota." },
+      { status: 500 },
+    );
   }
+
+  // ── Notify all active users that the org structure changed ─────────────────
+  const session = await getSessionFromCookie();
+  await notifyAllActiveUsers(
+    supabase,
+    {
+      tenant_id: DEFAULT_TENANT_ID,
+      actor_user_id: session?.userId ?? null,
+      type: "ORGANISASI",
+      priority: "NORMAL",
+      title: "Pengurus RT Diperbarui",
+      body: "Susunan pengurus RT telah diperbarui.",
+      action_url: "/organisasi",
+      entity_table: "organisation_members",
+      entity_id: id,
+      created_by: session?.userId ?? null,
+    },
+    session?.userId,
+  );
 
   return NextResponse.json({ ok: true });
 }

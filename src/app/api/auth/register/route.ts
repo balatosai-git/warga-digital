@@ -11,6 +11,7 @@ import {
   DEFAULT_ROLE_WARGA_ID,
 } from "@/lib/constants/seed-ids";
 import { parseBlokRumah } from "@/lib/blok-rumah";
+import { notifyAdmins } from "@/lib/notifications";
 
 /**
  * Find or create house (by canonical blok_rumah), ensure tenant_users + user_houses (OWNER, primary),
@@ -213,6 +214,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Track whether this is a brand-new user (vs an existing one re-registering)
+    const isNewUser = !existingUser;
     let userId: string;
 
     if (existingUser?.id) {
@@ -418,6 +421,24 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // ── Notify all admins of brand-new registration (best-effort) ──────────
+      if (isNewUser) {
+        await notifyAdmins(supabase, {
+          tenant_id: tenantId,
+          actor_user_id: userId,
+          type: "SYSTEM",
+          priority: "NORMAL",
+          title: "Warga Baru Terdaftar",
+          body: `${trimmedName} baru saja mendaftar dengan blok rumah ${blokRumah} dan menunggu persetujuan bergabung.`,
+          action_url: "/admin/warga",
+          entity_table: "users",
+          entity_id: userId,
+          dedupe_key: `new_user:${userId}:registered`,
+          metadata: { blokRumah, requiresApproval: true },
+          created_by: userId,
+        });
+      }
+
       return NextResponse.json({
         success: true,
         requiresApproval: true,
@@ -470,6 +491,24 @@ export async function POST(request: NextRequest) {
         { error: "User tidak ditemukan" },
         { status: 500 },
       );
+    }
+
+    // ── Notify all admins of brand-new registration (best-effort) ──────────
+    if (isNewUser) {
+      await notifyAdmins(supabase, {
+        tenant_id: tenantId,
+        actor_user_id: userId,
+        type: "SYSTEM",
+        priority: "NORMAL",
+        title: "Warga Baru Terdaftar",
+        body: `${trimmedName} baru saja mendaftar dengan blok rumah ${blokRumah}.`,
+        action_url: "/admin/warga",
+        entity_table: "users",
+        entity_id: userId,
+        dedupe_key: `new_user:${userId}:registered`,
+        metadata: { blokRumah },
+        created_by: userId,
+      });
     }
 
     return NextResponse.json({

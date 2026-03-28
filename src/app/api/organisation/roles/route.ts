@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { DEFAULT_TENANT_ID } from "@/lib/constants/seed-ids";
+import { getSessionFromCookie } from "@/lib/auth/session";
 import { requireCanManageOrganisation } from "../require-manage";
+import { notifyAllActiveUsers } from "@/lib/notifications";
 
 /**
  * POST /api/organisation/roles
@@ -13,12 +15,21 @@ export async function POST(request: Request) {
   if (forbidden) return forbidden;
 
   try {
-    const body = (await request.json()) as { title?: string; sortOrder?: number };
+    const body = (await request.json()) as {
+      title?: string;
+      sortOrder?: number;
+    };
     const title = typeof body.title === "string" ? body.title.trim() : "";
     if (!title) {
-      return NextResponse.json({ message: "Judul peran wajib diisi." }, { status: 400 });
+      return NextResponse.json(
+        { message: "Judul peran wajib diisi." },
+        { status: 400 },
+      );
     }
-    const sortOrder = typeof body.sortOrder === "number" && Number.isFinite(body.sortOrder) ? body.sortOrder : 0;
+    const sortOrder =
+      typeof body.sortOrder === "number" && Number.isFinite(body.sortOrder)
+        ? body.sortOrder
+        : 0;
 
     const supabase = createServerClient();
     const { data, error } = await supabase
@@ -35,8 +46,31 @@ export async function POST(request: Request) {
     if (error) {
       // eslint-disable-next-line no-console
       console.error("[Organisation] POST role error:", error);
-      return NextResponse.json({ message: "Gagal menambah peran." }, { status: 500 });
+      return NextResponse.json(
+        { message: "Gagal menambah peran." },
+        { status: 500 },
+      );
     }
+
+    // ── Notify all active users that the org structure changed ───────────────
+    const session = await getSessionFromCookie();
+    await notifyAllActiveUsers(
+      supabase,
+      {
+        tenant_id: DEFAULT_TENANT_ID,
+        actor_user_id: session?.userId ?? null,
+        type: "ORGANISASI",
+        priority: "NORMAL",
+        title: "Pengurus RT Diperbarui",
+        body: `Peran baru "${title}" telah ditambahkan ke susunan pengurus RT.`,
+        action_url: "/organisasi",
+        entity_table: "organisation_roles",
+        entity_id: data.id,
+        metadata: { roleTitle: title },
+        created_by: session?.userId ?? null,
+      },
+      session?.userId,
+    );
 
     return NextResponse.json({
       id: data.id,
@@ -47,6 +81,9 @@ export async function POST(request: Request) {
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error("[Organisation] POST role error:", error);
-    return NextResponse.json({ message: "Gagal menambah peran." }, { status: 500 });
+    return NextResponse.json(
+      { message: "Gagal menambah peran." },
+      { status: 500 },
+    );
   }
 }

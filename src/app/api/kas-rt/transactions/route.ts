@@ -8,6 +8,7 @@ import {
   DEFAULT_COMMUNITY_ID,
   ROLE_IDS_CAN_SUBMIT_KAS_RT,
 } from "@/lib/constants/seed-ids";
+import { notifyAllActiveUsers } from "@/lib/notifications";
 
 export async function POST(request: Request) {
   try {
@@ -183,8 +184,8 @@ export async function POST(request: Request) {
     }
 
     // ── Notifications ─────────────────────────────────────────────────────────
-    // Recipients: active users who hold a kas-rt submit role, EXCLUDING the actor.
-    // Body includes the actor's full name so others know who created the entry.
+    // • expense → all active users in the tenant (everyone should know about spending)
+    // • income  → only users with kas-rt submit roles (existing behaviour)
 
     const { data: actorUser } = await supabase
       .from("users")
@@ -194,66 +195,91 @@ export async function POST(request: Request) {
 
     const actorFullName = actorUser?.full_name?.trim() || "Seseorang";
 
-    const { data: roleRows, error: roleErr } = await supabase
-      .from("tenant_user_roles")
-      .select("tenant_user_id")
-      .in("role_id", ROLE_IDS_CAN_SUBMIT_KAS_RT)
-      .is("revoked_at", null);
+    const notifTitle =
+      type === "income" ? "Pemasukan Kas RT Baru" : "Pengeluaran Kas RT Baru";
+    const notifBody =
+      `${title.trim()} – Rp ${Math.round(amount).toLocaleString("id-ID")}` +
+      ` · Dicatat oleh: ${actorFullName}`;
+    const notifMeta = {
+      transactionId: data.id,
+      transactionType: type,
+      amount,
+      date,
+      action: "CREATED",
+      actorFullName,
+    };
 
-    if (roleErr) {
-      console.error("[Kas RT] Fetch role rows error:", roleErr);
-    } else if (roleRows?.length) {
-      const authorizedTenantUserIds = roleRows.map((r) => r.tenant_user_id);
-
-      const { data: recipientRows, error: recipientErr } = await supabase
-        .from("tenant_users")
-        .select("user_id")
-        .eq("tenant_id", tenantId)
-        .eq("status", "ACTIVE")
-        .in("id", authorizedTenantUserIds)
-        .neq("user_id", session.userId);
-
-      if (recipientErr) {
-        console.error("[Kas RT] Fetch recipients error:", recipientErr);
-      } else if (recipientRows && recipientRows.length > 0) {
-        const uniqueRecipients = Array.from(
-          new Set(recipientRows.map((row) => row.user_id).filter(Boolean)),
-        );
-
-        const notificationRows = uniqueRecipients.map((recipientUserId) => ({
+    if (type === "expense") {
+      // Expense: broadcast to every active warga so they know about spending
+      await notifyAllActiveUsers(
+        supabase,
+        {
           tenant_id: tenantId,
-          recipient_user_id: recipientUserId,
           actor_user_id: session.userId,
           type: "KAS_RT",
           priority: "NORMAL",
-          title:
-            type === "income"
-              ? "Pemasukan Kas RT Baru"
-              : "Pengeluaran Kas RT Baru",
-          body:
-            `${title.trim()} – Rp ${Math.round(amount).toLocaleString("id-ID")}` +
-            ` · Dicatat oleh: ${actorFullName}`,
+          title: notifTitle,
+          body: notifBody,
           action_url: "/kas-rt",
           entity_table: "kas_rt_transactions",
           entity_id: data.id,
-          dedupe_key: `kas_rt_transaction:${data.id}:CREATED:to:${recipientUserId}`,
-          metadata: {
-            transactionId: data.id,
-            transactionType: type,
-            amount,
-            date,
-            action: "CREATED",
-            actorFullName,
-          },
+          dedupe_key: `kas_rt_transaction:${data.id}:CREATED`,
+          metadata: notifMeta,
           created_by: session.userId,
-        }));
+        },
+        session.userId, // exclude the actor who recorded the transaction
+      );
+    } else {
+      // Income: notify only users who have a kas-rt submit role (existing behaviour)
+      const { data: roleRows, error: roleErr } = await supabase
+        .from("tenant_user_roles")
+        .select("tenant_user_id")
+        .in("role_id", ROLE_IDS_CAN_SUBMIT_KAS_RT)
+        .is("revoked_at", null);
 
-        const { error: notifErr } = await supabase
-          .from("notifications")
-          .insert(notificationRows);
+      if (roleErr) {
+        console.error("[Kas RT] Fetch role rows error:", roleErr);
+      } else if (roleRows?.length) {
+        const authorizedTenantUserIds = roleRows.map((r) => r.tenant_user_id);
 
-        if (notifErr) {
-          console.error("[Kas RT] Insert notifications error:", notifErr);
+        const { data: recipientRows, error: recipientErr } = await supabase
+          .from("tenant_users")
+          .select("user_id")
+          .eq("tenant_id", tenantId)
+          .eq("status", "ACTIVE")
+          .in("id", authorizedTenantUserIds)
+          .neq("user_id", session.userId);
+
+        if (recipientErr) {
+          console.error("[Kas RT] Fetch recipients error:", recipientErr);
+        } else if (recipientRows && recipientRows.length > 0) {
+          const uniqueRecipients = Array.from(
+            new Set(recipientRows.map((row) => row.user_id).filter(Boolean)),
+          );
+
+          const notificationRows = uniqueRecipients.map((recipientUserId) => ({
+            tenant_id: tenantId,
+            recipient_user_id: recipientUserId,
+            actor_user_id: session.userId,
+            type: "KAS_RT",
+            priority: "NORMAL",
+            title: notifTitle,
+            body: notifBody,
+            action_url: "/kas-rt",
+            entity_table: "kas_rt_transactions",
+            entity_id: data.id,
+            dedupe_key: `kas_rt_transaction:${data.id}:CREATED:to:${recipientUserId}`,
+            metadata: notifMeta,
+            created_by: session.userId,
+          }));
+
+          const { error: notifErr } = await supabase
+            .from("notifications")
+            .insert(notificationRows);
+
+          if (notifErr) {
+            console.error("[Kas RT] Insert notifications error:", notifErr);
+          }
         }
       }
     }

@@ -7,6 +7,7 @@ import {
   normalizeWaNumber,
   validateNormalizedWaNumber,
 } from "@/lib/phone-utils";
+import { notifyAdmins } from "@/lib/notifications";
 
 /** Format IDR amount as "Rp X.XXX" / "Rp X,XJt" / "Rp X,XM" */
 function formatRupiah(amount: number): string {
@@ -596,6 +597,25 @@ export async function PATCH(request: NextRequest) {
     updates.updated_at = new Date().toISOString();
     updates.updated_by = session.userId;
 
+    // ── Pre-fetch old values for change-detection (wa_number, username, email) ─
+    const sensitiveKeys = ["wa_number", "username", "email"] as const;
+    const trackingFields = sensitiveKeys.filter((k) => k in body);
+    let oldSensitiveValues: {
+      wa_number?: string | null;
+      username?: string | null;
+      email?: string | null;
+      full_name?: string | null;
+    } = {};
+    if (trackingFields.length > 0) {
+      const supabasePre = createServerClient();
+      const { data: preUser } = await supabasePre
+        .from("users")
+        .select("wa_number, username, email, full_name")
+        .eq("id", session.userId)
+        .single();
+      oldSensitiveValues = (preUser as typeof oldSensitiveValues) ?? {};
+    }
+
     const supabase = createServerClient();
     const { data, error } = await supabase
       .from("users")
@@ -618,6 +638,55 @@ export async function PATCH(request: NextRequest) {
         { error: "Gagal menyimpan profil" },
         { status: 500 },
       );
+    }
+
+    // ── Notify all admins if a sensitive field actually changed ───────────────
+    if (trackingFields.length > 0) {
+      const changedLabels: string[] = [];
+      if (
+        "wa_number" in body &&
+        String(updates.wa_number ?? "") !==
+          String(oldSensitiveValues.wa_number ?? "")
+      ) {
+        changedLabels.push("nomor WhatsApp");
+      }
+      if (
+        "username" in body &&
+        String(updates.username ?? "") !==
+          String(oldSensitiveValues.username ?? "")
+      ) {
+        changedLabels.push("username");
+      }
+      if (
+        "email" in body &&
+        String(updates.email ?? "") !== String(oldSensitiveValues.email ?? "")
+      ) {
+        changedLabels.push("email");
+      }
+
+      if (changedLabels.length > 0) {
+        const displayName =
+          (data as { full_name?: string | null }).full_name?.trim() ||
+          oldSensitiveValues.full_name?.trim() ||
+          "Warga";
+        await notifyAdmins(
+          supabase,
+          {
+            tenant_id: DEFAULT_TENANT_ID,
+            actor_user_id: session.userId,
+            type: "SYSTEM",
+            priority: "NORMAL",
+            title: "Profil Warga Diperbarui",
+            body: `${displayName} mengubah ${changedLabels.join(" dan ")}.`,
+            action_url: "/admin/warga",
+            entity_table: "users",
+            entity_id: session.userId,
+            metadata: { changedFields: changedLabels },
+            created_by: session.userId,
+          },
+          session.userId, // exclude the actor (they changed their own profile)
+        );
+      }
     }
 
     return NextResponse.json({

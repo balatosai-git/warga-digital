@@ -3,6 +3,7 @@ import { getSessionFromCookie } from "@/lib/auth/session";
 import { createServerClient } from "@/lib/supabase/server";
 import { DEFAULT_TENANT_ID } from "@/lib/constants/seed-ids";
 import { requireAdmin } from "@/lib/auth/admin-guard";
+import { notifyAdmins } from "@/lib/notifications";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -212,12 +213,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   // Best-effort: send in-app notification to the newly assigned user
+  const typedRole = roleRow as unknown as { id: number; name: string };
+  const roleName = typedRole.name
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
   try {
-    const typedRole = roleRow as unknown as { id: number; name: string };
-    const roleName = typedRole.name
-      .replace(/_/g, " ")
-      .toLowerCase()
-      .replace(/\b\w/g, (c) => c.toUpperCase());
     await supabase.from("notifications").insert({
       tenant_id: DEFAULT_TENANT_ID,
       recipient_user_id: userId,
@@ -232,6 +234,50 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
   } catch (notifErr) {
     console.error("[admin/roles/users] POST notification error:", notifErr);
+  }
+
+  // Best-effort: notify all admin personnel about the assignment
+  try {
+    const [targetUserRes, actorUserRes] = await Promise.all([
+      supabase.from("users").select("full_name").eq("id", userId).maybeSingle(),
+      supabase
+        .from("users")
+        .select("full_name")
+        .eq("id", session.userId)
+        .maybeSingle(),
+    ]);
+
+    const targetName =
+      (
+        targetUserRes.data as { full_name?: string } | null
+      )?.full_name?.trim() || "Warga";
+    const actorName =
+      (actorUserRes.data as { full_name?: string } | null)?.full_name?.trim() ||
+      "Admin";
+
+    await notifyAdmins(
+      supabase,
+      {
+        tenant_id: DEFAULT_TENANT_ID,
+        actor_user_id: session.userId,
+        type: "ORGANISASI",
+        priority: "NORMAL",
+        title: "Role Diberikan ke Warga",
+        body: `${actorName} memberikan role "${roleName}" kepada ${targetName}.`,
+        action_url: "/admin/roles",
+        entity_table: "tenant_user_roles",
+        entity_id: assigned.id,
+        dedupe_key: `role_assigned:${assigned.id}:admin_notif`,
+        metadata: { roleId, userId, roleName, targetName },
+        created_by: session.userId,
+      },
+      session.userId, // exclude the actor so they don't notify themselves
+    );
+  } catch (adminNotifErr) {
+    console.error(
+      "[admin/roles/users] POST admin notification error:",
+      adminNotifErr,
+    );
   }
 
   return NextResponse.json(
