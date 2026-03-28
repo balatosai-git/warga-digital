@@ -3,6 +3,7 @@ import { getSessionFromCookie } from "@/lib/auth/session";
 import { createServerClient } from "@/lib/supabase/server";
 import { DEFAULT_TENANT_ID } from "@/lib/constants/seed-ids";
 import { THEMES } from "@/lib/themes";
+import { normalizeWaNumber } from "@/lib/phone-utils";
 
 /** Format IDR amount as "Rp X.XXX" / "Rp X,XJt" / "Rp X,XM" */
 function formatRupiah(amount: number): string {
@@ -454,6 +455,7 @@ const ALLOWED_KEYS = [
   "date_of_birth",
   "username",
   "theme_id",
+  "wa_number",
 ] as const;
 
 /**
@@ -495,6 +497,19 @@ export async function PATCH(request: NextRequest) {
             }
             updates[key] = trimmed;
           }
+        } else if (key === "wa_number") {
+          if (v === null || v === "") {
+            updates[key] = null;
+          } else if (typeof v === "string") {
+            const normalized = normalizeWaNumber(v.trim());
+            if (!normalized) {
+              return NextResponse.json(
+                { error: "Nomor WhatsApp tidak valid" },
+                { status: 400 },
+              );
+            }
+            updates[key] = normalized;
+          }
         } else if (key === "theme_id") {
           if (typeof v !== "string" || !v.trim()) {
             updates[key] = "green";
@@ -530,6 +545,45 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    // Validation: username or wa_number must not both be empty
+    const hasUsername =
+      updates.username !== null &&
+      updates.username !== undefined &&
+      updates.username !== "";
+    const hasWaNumber =
+      updates.wa_number !== null &&
+      updates.wa_number !== undefined &&
+      updates.wa_number !== "";
+    const updatingUsername = "username" in body;
+    const updatingWaNumber = "wa_number" in body;
+
+    if (updatingUsername || updatingWaNumber) {
+      // Get current user's data to check existing values
+      const supabaseForCheck = createServerClient();
+      const { data: currentUser } = await supabaseForCheck
+        .from("users")
+        .select("username, wa_number")
+        .eq("id", session.userId)
+        .single();
+
+      const finalUsername = updatingUsername
+        ? (updates.username ?? null)
+        : (currentUser?.username ?? null);
+      const finalWaNumber = updatingWaNumber
+        ? (updates.wa_number ?? null)
+        : (currentUser?.wa_number ?? null);
+
+      if (!finalUsername && !finalWaNumber) {
+        return NextResponse.json(
+          {
+            error:
+              "Username atau nomor WhatsApp wajib diisi (minimal satu harus aktif)",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
         { error: "Tidak ada data yang diubah" },
@@ -546,14 +600,14 @@ export async function PATCH(request: NextRequest) {
       .update(updates)
       .eq("id", session.userId)
       .select(
-        "id, full_name, username, email, date_of_birth, theme_id, updated_at",
+        "id, full_name, username, wa_number, email, date_of_birth, theme_id, updated_at",
       )
       .single();
 
     if (error) {
       if (error.code === "23505") {
         return NextResponse.json(
-          { error: "Username atau email sudah dipakai" },
+          { error: "Username, email, atau nomor WhatsApp sudah dipakai" },
           { status: 409 },
         );
       }
@@ -570,6 +624,7 @@ export async function PATCH(request: NextRequest) {
         id: data.id,
         fullName: data.full_name,
         username: data.username ?? null,
+        waNumber: maskWaNumber(data.wa_number),
         email: data.email ?? null,
         dateOfBirth: data.date_of_birth ?? null,
         themeId: (data as { theme_id?: string }).theme_id ?? "green",

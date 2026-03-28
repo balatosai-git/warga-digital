@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   ArrowPathIcon,
   ArrowRightOnRectangleIcon,
@@ -488,8 +489,20 @@ export default function ProfilePage() {
   // Edit form state
   const [editFullName, setEditFullName] = useState("");
   const [editUsername, setEditUsername] = useState("");
+  const [editWaNumber, setEditWaNumber] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editDateOfBirth, setEditDateOfBirth] = useState("");
+
+  // Availability checking state
+  const [usernameCheckLoading, setUsernameCheckLoading] = useState(false);
+  const [usernameCheckStatus, setUsernameCheckStatus] = useState<
+    "idle" | "available" | "taken" | "error"
+  >("idle");
+  const [waNumberCheckLoading, setWaNumberCheckLoading] = useState(false);
+  const [waNumberCheckStatus, setWaNumberCheckStatus] = useState<
+    "idle" | "available" | "taken" | "error"
+  >("idle");
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Ubah PIN state
   const [isChangingPin, setIsChangingPin] = useState(false);
@@ -557,8 +570,12 @@ export default function ProfilePage() {
         setProfile(data);
         setEditFullName(data.fullName ?? "");
         setEditUsername(data.username ?? "");
+        setEditWaNumber(data.waNumberMasked ?? "");
         setEditEmail(data.email ?? "");
         setEditDateOfBirth(toDateInputValue(data.dateOfBirth));
+        setValidationError(null);
+        setUsernameCheckStatus("idle");
+        setWaNumberCheckStatus("idle");
         const savedThemeId = data.themeId ?? "green";
         setThemeId(savedThemeId);
         const house = data.house;
@@ -587,8 +604,12 @@ export default function ProfilePage() {
       setProfile(profileData);
       setEditFullName(profileData.fullName ?? "");
       setEditUsername(profileData.username ?? "");
+      setEditWaNumber(profileData.waNumberMasked ?? "");
       setEditEmail(profileData.email ?? "");
       setEditDateOfBirth(toDateInputValue(profileData.dateOfBirth));
+      setValidationError(null);
+      setUsernameCheckStatus("idle");
+      setWaNumberCheckStatus("idle");
       const savedThemeId = profileData.themeId ?? "green";
       setThemeId(savedThemeId);
       const house = profileData.house;
@@ -601,6 +622,58 @@ export default function ProfilePage() {
         profilePictureUrl: profileData.profilePictureUrl ?? null,
         blokRumah: blok,
       });
+    }
+  };
+
+  const checkUsernameAvailability = async (username: string) => {
+    if (!username.trim()) {
+      setUsernameCheckStatus("idle");
+      return;
+    }
+    setUsernameCheckLoading(true);
+    setUsernameCheckStatus("idle");
+    try {
+      const res = await apiFetch("/api/profile/check/username", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim() }),
+      });
+      const data = await res.json();
+      if (data.available) {
+        setUsernameCheckStatus("available");
+      } else {
+        setUsernameCheckStatus("taken");
+      }
+    } catch {
+      setUsernameCheckStatus("error");
+    } finally {
+      setUsernameCheckLoading(false);
+    }
+  };
+
+  const checkWaNumberAvailability = async (waNumber: string) => {
+    if (!waNumber.trim()) {
+      setWaNumberCheckStatus("idle");
+      return;
+    }
+    setWaNumberCheckLoading(true);
+    setWaNumberCheckStatus("idle");
+    try {
+      const res = await apiFetch("/api/profile/check/wa-number", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ waNumber: waNumber.trim() }),
+      });
+      const data = await res.json();
+      if (data.available) {
+        setWaNumberCheckStatus("available");
+      } else {
+        setWaNumberCheckStatus("taken");
+      }
+    } catch {
+      setWaNumberCheckStatus("error");
+    } finally {
+      setWaNumberCheckLoading(false);
     }
   };
 
@@ -769,6 +842,38 @@ export default function ProfilePage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaveError(null);
+    setValidationError(null);
+
+    // Validation: username or wa_number must not both be empty
+    const hasUsername = editUsername.trim().length > 0;
+    const hasWaNumber = editWaNumber.trim().length > 0;
+
+    if (!hasUsername && !hasWaNumber) {
+      setValidationError(
+        "Username atau nomor WhatsApp wajib diisi (minimal satu harus aktif)",
+      );
+      return;
+    }
+
+    // Check availability if changed
+    if (
+      hasUsername &&
+      editUsername !== profile?.username &&
+      usernameCheckStatus === "taken"
+    ) {
+      setValidationError("Username sudah dipakai");
+      return;
+    }
+
+    if (
+      hasWaNumber &&
+      editWaNumber !== profile?.waNumberMasked &&
+      waNumberCheckStatus === "taken"
+    ) {
+      setValidationError("Nomor WhatsApp sudah dipakai");
+      return;
+    }
+
     setSaving(true);
     try {
       const res = await apiFetch("/api/profile", {
@@ -777,6 +882,7 @@ export default function ProfilePage() {
         body: JSON.stringify({
           full_name: editFullName.trim(),
           username: editUsername.trim() || null,
+          wa_number: editWaNumber.trim() || null,
           email: editEmail.trim() || null,
           date_of_birth: editDateOfBirth || null,
         }),
@@ -792,6 +898,7 @@ export default function ProfilePage() {
               ...prev,
               fullName: data.profile.fullName,
               username: data.profile.username,
+              waNumberMasked: data.profile.waNumber,
               email: data.profile.email,
               dateOfBirth: data.profile.dateOfBirth,
             }
@@ -953,14 +1060,77 @@ export default function ProfilePage() {
           onBack={() => {
             setIsEditing(false);
             setSaveError(null);
+            setValidationError(null);
             setEditFullName(profile.fullName);
             setEditUsername(profile.username ?? "");
+            setEditWaNumber(profile.waNumberMasked ?? "");
             setEditEmail(profile.email ?? "");
             setEditDateOfBirth(toDateInputValue(profile.dateOfBirth));
+            setUsernameCheckStatus("idle");
+            setWaNumberCheckStatus("idle");
           }}
         />
         <div className="min-h-0 flex-1 overflow-y-auto">
           <form onSubmit={handleSave} className="space-y-4 px-4 pb-10 pt-5">
+            {/* Profile Picture Edit Section - Large Cover */}
+            <div className="flex flex-col items-center gap-4 py-6 -mx-4 px-4 bg-gradient-to-b from-app-surface to-transparent">
+              <div className="relative w-full flex items-center justify-center">
+                <div
+                  className="relative rounded-3xl overflow-hidden shadow-lg"
+                  style={{
+                    width: "90%",
+                    maxWidth: "500px",
+                    aspectRatio: "1 / 1",
+                  }}
+                >
+                  {profile?.profilePictureUrl ? (
+                    <Image
+                      src={profile.profilePictureUrl}
+                      alt={profile?.fullName ?? "Warga"}
+                      fill
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-app-primary-muted">
+                      <Avatar name={profile?.fullName ?? "Warga"} size={300} />
+                    </div>
+                  )}
+                  {avatarLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <div className="h-8 w-8 animate-spin rounded-full border-3 border-white border-t-transparent" />
+                    </div>
+                  )}
+                  {!avatarLoading && (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={avatarLoading}
+                      className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-colors group"
+                    >
+                      <div className="flex flex-col items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <CameraIcon className="h-12 w-12 text-white drop-shadow-lg" />
+                        <span className="text-white font-semibold text-sm drop-shadow-lg">
+                          Ubah Foto
+                        </span>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
+              {avatarError && (
+                <p className="text-[12px] text-red-600 text-center">
+                  {avatarError}
+                </p>
+              )}
+            </div>
+
             <FieldInput
               label="Nama Lengkap"
               id="full-name"
@@ -969,22 +1139,164 @@ export default function ProfilePage() {
               autoComplete="name"
               placeholder="Contoh: Budi Santoso"
             />
-            <FieldInput
-              label="Username"
-              id="username"
-              optional
-              value={editUsername}
-              onChange={(e) => setEditUsername(e.target.value)}
-              autoComplete="username"
-              placeholder="Contoh: budi_santoso"
-            />
+
+            {/* Username Field with Availability Check */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label
+                  htmlFor="username"
+                  className="text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
+                >
+                  Username
+                  <span className="ml-1 normal-case font-normal text-app-body-muted/70">
+                    (opsional)
+                  </span>
+                </label>
+                {usernameCheckLoading && (
+                  <div className="flex items-center gap-1">
+                    <div className="h-2 w-2 animate-spin rounded-full border border-app-primary border-t-transparent" />
+                    <span className="text-[10px] text-app-body-muted">
+                      Cek...
+                    </span>
+                  </div>
+                )}
+                {!usernameCheckLoading &&
+                  usernameCheckStatus === "available" && (
+                    <span className="flex items-center gap-1 text-[10px] text-green-600">
+                      <CheckIcon className="h-3 w-3" />
+                      Tersedia
+                    </span>
+                  )}
+                {usernameCheckStatus === "taken" && (
+                  <span className="text-[10px] text-red-600">
+                    Sudah dipakai
+                  </span>
+                )}
+              </div>
+              <input
+                id="username"
+                type="text"
+                value={editUsername}
+                onChange={(e) => {
+                  setEditUsername(e.target.value);
+                  setValidationError(null);
+                  if (e.target.value.trim() !== profile?.username) {
+                    if (e.target.value.trim()) {
+                      checkUsernameAvailability(e.target.value);
+                    } else {
+                      setUsernameCheckStatus("idle");
+                    }
+                  } else {
+                    setUsernameCheckStatus("idle");
+                  }
+                }}
+                autoComplete="username"
+                placeholder="Contoh: budi_santoso"
+                className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title outline-none transition-all"
+                style={{
+                  borderColor:
+                    usernameCheckStatus === "taken"
+                      ? "var(--color-red-500)"
+                      : "var(--color-input-border)",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-primary)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, white 84%)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor =
+                    usernameCheckStatus === "taken"
+                      ? "var(--color-red-500)"
+                      : "var(--color-input-border)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
+            </div>
+
+            {/* WhatsApp Number Field with Availability Check */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label
+                  htmlFor="wa-number"
+                  className="text-[11px] font-bold uppercase tracking-widest text-app-body-muted"
+                >
+                  Nomor WhatsApp
+                  <span className="ml-1 normal-case font-normal text-app-body-muted/70">
+                    (opsional)
+                  </span>
+                </label>
+                {waNumberCheckLoading && (
+                  <div className="flex items-center gap-1">
+                    <div className="h-2 w-2 animate-spin rounded-full border border-app-primary border-t-transparent" />
+                    <span className="text-[10px] text-app-body-muted">
+                      Cek...
+                    </span>
+                  </div>
+                )}
+                {!waNumberCheckLoading &&
+                  waNumberCheckStatus === "available" && (
+                    <span className="flex items-center gap-1 text-[10px] text-green-600">
+                      <CheckIcon className="h-3 w-3" />
+                      Tersedia
+                    </span>
+                  )}
+                {waNumberCheckStatus === "taken" && (
+                  <span className="text-[10px] text-red-600">
+                    Sudah dipakai
+                  </span>
+                )}
+              </div>
+              <input
+                id="wa-number"
+                type="tel"
+                value={editWaNumber}
+                onChange={(e) => {
+                  setEditWaNumber(e.target.value);
+                  setValidationError(null);
+                  if (e.target.value.trim() !== profile?.waNumberMasked) {
+                    if (e.target.value.trim()) {
+                      checkWaNumberAvailability(e.target.value);
+                    } else {
+                      setWaNumberCheckStatus("idle");
+                    }
+                  } else {
+                    setWaNumberCheckStatus("idle");
+                  }
+                }}
+                autoComplete="tel"
+                placeholder="08xxxxxxxxxx"
+                className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title outline-none transition-all"
+                style={{
+                  borderColor:
+                    waNumberCheckStatus === "taken"
+                      ? "var(--color-red-500)"
+                      : "var(--color-input-border)",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-primary)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, white 84%)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor =
+                    waNumberCheckStatus === "taken"
+                      ? "var(--color-red-500)"
+                      : "var(--color-input-border)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
+            </div>
             <FieldInput
               label="Email"
               id="email"
               type="email"
               optional
               value={editEmail}
-              onChange={(e) => setEditEmail(e.target.value)}
+              onChange={(e) => {
+                setEditEmail(e.target.value);
+                setValidationError(null);
+              }}
               autoComplete="email"
               placeholder="budi@email.com"
             />
@@ -1002,7 +1314,10 @@ export default function ProfilePage() {
                 id="dob"
                 type="date"
                 value={editDateOfBirth}
-                onChange={(e) => setEditDateOfBirth(e.target.value)}
+                onChange={(e) => {
+                  setEditDateOfBirth(e.target.value);
+                  setValidationError(null);
+                }}
                 className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-app-title outline-none transition-all"
                 style={{ borderColor: "var(--color-input-border)" }}
                 onFocus={(e) => {
@@ -1018,10 +1333,12 @@ export default function ProfilePage() {
               />
             </div>
 
-            {saveError && (
+            {(saveError || validationError) && (
               <div className="flex items-start gap-2.5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3">
                 <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-                <p className="text-sm text-red-600 leading-snug">{saveError}</p>
+                <p className="text-sm text-red-600 leading-snug">
+                  {validationError || saveError}
+                </p>
               </div>
             )}
 
@@ -1031,10 +1348,14 @@ export default function ProfilePage() {
                 onClick={() => {
                   setIsEditing(false);
                   setSaveError(null);
+                  setValidationError(null);
                   setEditFullName(profile.fullName);
                   setEditUsername(profile.username ?? "");
+                  setEditWaNumber(profile.waNumberMasked ?? "");
                   setEditEmail(profile.email ?? "");
                   setEditDateOfBirth(toDateInputValue(profile.dateOfBirth));
+                  setUsernameCheckStatus("idle");
+                  setWaNumberCheckStatus("idle");
                 }}
                 className="flex-1 rounded-2xl py-4 text-sm font-bold text-app-body transition hover:bg-app-surface active:scale-95"
                 style={{ background: "var(--color-surface-alt)" }}
@@ -1043,15 +1364,31 @@ export default function ProfilePage() {
               </button>
               <button
                 type="submit"
-                disabled={saving}
+                disabled={
+                  saving ||
+                  usernameCheckLoading ||
+                  waNumberCheckLoading ||
+                  usernameCheckStatus === "taken" ||
+                  waNumberCheckStatus === "taken"
+                }
                 className="flex-1 rounded-2xl py-4 text-sm font-bold text-white transition hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-50"
                 style={{
-                  background: saving
-                    ? "var(--color-body-muted)"
-                    : "var(--color-primary)",
-                  boxShadow: saving
-                    ? "none"
-                    : "0 8px 22px -12px var(--color-primary-shadow)",
+                  background:
+                    saving ||
+                    usernameCheckLoading ||
+                    waNumberCheckLoading ||
+                    usernameCheckStatus === "taken" ||
+                    waNumberCheckStatus === "taken"
+                      ? "var(--color-body-muted)"
+                      : "var(--color-primary)",
+                  boxShadow:
+                    saving ||
+                    usernameCheckLoading ||
+                    waNumberCheckLoading ||
+                    usernameCheckStatus === "taken" ||
+                    waNumberCheckStatus === "taken"
+                      ? "none"
+                      : "0 8px 22px -12px var(--color-primary-shadow)",
                 }}
               >
                 {saving ? (
