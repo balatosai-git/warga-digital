@@ -48,20 +48,50 @@ function AdminIcon({ active }: { active: boolean }) {
   return <Icon className="h-6 w-6" aria-hidden />;
 }
 
+const SESSION_KEY = "isAdminRt";
+
+function getSessionAdminRole(): boolean | null {
+  try {
+    const val = sessionStorage.getItem(SESSION_KEY);
+    if (val === null) return null;
+    return val === "true";
+  } catch {
+    return null;
+  }
+}
+
+function setSessionAdminRole(value: boolean) {
+  try {
+    sessionStorage.setItem(SESSION_KEY, String(value));
+  } catch {
+    // sessionStorage not available (e.g. SSR), silently ignore
+  }
+}
+
 export function BottomNav() {
   const pathname = usePathname();
-  const [isAdminRt, setIsAdminRt] = useState(false);
+  const [isAdminRt, setIsAdminRt] = useState<boolean>(() => {
+    return getSessionAdminRole() ?? false;
+  });
 
   useEffect(() => {
+    // If already resolved from sessionStorage, skip the API call
+    if (getSessionAdminRole() !== null) return;
+
     let cancelled = false;
     fetch("/api/profile")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled) return;
-        setIsAdminRt(hasAdminRoleInProfile(data));
+        const result = hasAdminRoleInProfile(data);
+        setSessionAdminRole(result);
+        setIsAdminRt(result);
       })
       .catch(() => {
-        if (!cancelled) setIsAdminRt(false);
+        if (!cancelled) {
+          setSessionAdminRole(false);
+          setIsAdminRt(false);
+        }
       });
 
     return () => {
