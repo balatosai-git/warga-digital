@@ -314,7 +314,7 @@ export default function AdminPage() {
           : "Permintaan masuk",
       icon: UserPlusIcon,
       badge: isReady ? stats!.pendingJoinRequests : undefined,
-      // no page yet
+      href: "/admin/join-request",
     },
     {
       label: "Marketplace",
