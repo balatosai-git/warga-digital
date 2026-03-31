@@ -113,6 +113,40 @@ async function provisionHouseAndTenantMembership(
   return { houseId };
 }
 
+async function assignDefaultWargaRole(
+  supabase: ReturnType<typeof createServerClient>,
+  tenantUserId: string,
+) {
+  const { error: roleErr } = await supabase.from("tenant_user_roles").insert({
+    tenant_user_id: tenantUserId,
+    role_id: DEFAULT_ROLE_WARGA_ID,
+  });
+  if (roleErr && roleErr.code !== "23505") {
+    console.error("[Register] Insert tenant_user_roles error:", roleErr);
+  }
+}
+
+async function tryClaimSystemPreregisteredOwner(
+  supabase: ReturnType<typeof createServerClient>,
+  tenantId: string,
+  houseId: string,
+  userId: string,
+): Promise<{ claimed: boolean }> {
+  const { data, error } = await supabase.rpc("claim_system_preregistered_owner", {
+    p_tenant_id: tenantId,
+    p_house_id: houseId,
+    p_real_user_id: userId,
+  });
+  if (error) {
+    console.error("[Register] claim_system_preregistered_owner rpc error:", error);
+    return { claimed: false };
+  }
+  if (Array.isArray(data) && data.length > 0) {
+    return { claimed: data[0]?.claimed === true };
+  }
+  return { claimed: false };
+}
+
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,30}$/;
 
 export async function POST(request: NextRequest) {
@@ -290,8 +324,90 @@ export async function POST(request: NextRequest) {
       .eq("blok_rumah", blokRumah)
       .maybeSingle();
 
-    if (requestToJoinExisting && existingHouse?.id) {
-      const houseId = existingHouse.id;
+    const existingHouseId = existingHouse?.id ?? null;
+    const claimResult =
+      existingHouseId != null
+        ? await tryClaimSystemPreregisteredOwner(
+            supabase,
+            tenantId,
+            existingHouseId,
+            userId,
+          )
+        : { claimed: false };
+
+    if (claimResult.claimed && existingHouseId) {
+      const { data: tenantUser, error: tuError } = await supabase
+        .from("tenant_users")
+        .upsert(
+          { tenant_id: tenantId, user_id: userId, status: "ACTIVE" },
+          { onConflict: "tenant_id,user_id" },
+        )
+        .select("id")
+        .single();
+
+      if (tuError || !tenantUser?.id) {
+        console.error("[Register] Upsert tenant_users after claim error:", tuError);
+        return NextResponse.json(
+          { error: "Gagal mendaftarkan ke tenant" },
+          { status: 500 },
+        );
+      }
+
+      await assignDefaultWargaRole(supabase, tenantUser.id);
+
+      const { error: _b1 } = await supabase
+        .from("user_badges")
+        .insert({ user_id: userId, badge_id: 1 });
+      if (_b1 && _b1.code !== "23505")
+        console.error("[Register] user_badges badge 1:", _b1);
+      const { error: _b2 } = await supabase
+        .from("user_badges")
+        .insert({ user_id: userId, badge_id: 2 });
+      if (_b2 && _b2.code !== "23505")
+        console.error("[Register] user_badges badge 2:", _b2);
+
+      const { data: user } = await supabase
+        .from("users")
+        .select("id, full_name")
+        .eq("id", userId)
+        .single();
+
+      if (!user) {
+        return NextResponse.json(
+          { error: "User tidak ditemukan" },
+          { status: 500 },
+        );
+      }
+
+      if (isNewUser) {
+        await notifyAdmins(supabase, {
+          tenant_id: tenantId,
+          actor_user_id: userId,
+          type: "SYSTEM",
+          priority: "NORMAL",
+          title: "Warga Baru Claim Data Pra-Registrasi",
+          body: `${trimmedName} berhasil claim owner rumah ${blokRumah} dari data pra-registrasi sistem.`,
+          action_url: "/admin/warga",
+          entity_table: "users",
+          entity_id: userId,
+          dedupe_key: `new_user:${userId}:prereg-claimed`,
+          metadata: { blokRumah, preRegisteredClaimed: true },
+          created_by: userId,
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        userId: user.id,
+        fullName: user.full_name,
+        houseId: existingHouseId,
+        blokRumah,
+        claimedFromSystemPreRegistration: true,
+      });
+    }
+
+    if (requestToJoinExisting && existingHouseId) {
+      const houseId = existingHouseId;
 
       const { data: tenantUser, error: tuError } = await supabase
         .from("tenant_users")
@@ -310,15 +426,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const { error: roleErr } = await supabase
-        .from("tenant_user_roles")
-        .insert({
-          tenant_user_id: tenantUser.id,
-          role_id: DEFAULT_ROLE_WARGA_ID,
-        });
-      if (roleErr && roleErr.code !== "23505") {
-        console.error("[Register] Insert tenant_user_roles error:", roleErr);
-      }
+      await assignDefaultWargaRole(supabase, tenantUser.id);
 
       const requestId = uuidv7();
       const { error: reqErr } = await supabase
