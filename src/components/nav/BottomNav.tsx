@@ -75,9 +75,6 @@ export function BottomNav() {
   });
 
   useEffect(() => {
-    // If already resolved from sessionStorage, skip the API call
-    if (getSessionAdminRole() !== null) return;
-
     let cancelled = false;
     fetch("/api/profile")
       .then((res) => (res.ok ? res.json() : null))
@@ -89,8 +86,8 @@ export function BottomNav() {
       })
       .catch(() => {
         if (!cancelled) {
-          setSessionAdminRole(false);
-          setIsAdminRt(false);
+          // Keep current state on transient errors to avoid flicker/hiding
+          // admin menu because of network hiccups.
         }
       });
 

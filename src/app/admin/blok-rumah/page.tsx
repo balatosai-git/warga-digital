@@ -31,6 +31,8 @@ interface HouseItem {
   total_residents: number;
   status: string;
   is_active: boolean;
+  owner_full_name?: string | null;
+  source_full_name?: string | null;
 }
 
 function statusLabel(status: string): string {
@@ -38,6 +40,8 @@ function statusLabel(status: string): string {
   if (status === "KANTOR") return "Kantor";
   return "Pribadi";
 }
+
+type OccupancyFilter = "ALL" | "KONTRAKAN" | "PRIBADI" | "KOSONG";
 
 export default function AdminBlokRumahPage() {
   const router = useRouter();
@@ -50,6 +54,7 @@ export default function AdminBlokRumahPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [occupancyFilter, setOccupancyFilter] = useState<OccupancyFilter>("ALL");
   const [houses, setHouses] = useState<HouseItem[]>([]);
 
   useEffect(() => {
@@ -129,15 +134,24 @@ export default function AdminBlokRumahPage() {
 
   const filteredHouses = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return houses;
-
     return houses.filter((house) => {
+      if (occupancyFilter === "KOSONG" && (house.total_residents ?? 0) > 0) {
+        return false;
+      }
+      if (
+        occupancyFilter !== "ALL" &&
+        occupancyFilter !== "KOSONG" &&
+        house.status !== occupancyFilter
+      ) {
+        return false;
+      }
+      if (!q) return true;
       const blok = (house.blok_rumah ?? "").toLowerCase();
       const name = (house.name ?? "").toLowerCase();
       const address = (house.address ?? "").toLowerCase();
       return blok.includes(q) || name.includes(q) || address.includes(q);
     });
-  }, [houses, query]);
+  }, [houses, occupancyFilter, query]);
 
   const totalResidents = useMemo(
     () => houses.reduce((sum, house) => sum + (house.total_residents ?? 0), 0),
@@ -251,6 +265,31 @@ export default function AdminBlokRumahPage() {
               <XMarkIcon className="h-4 w-4" />
             </button>
           )}
+        </div>
+
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          {[
+            { value: "ALL" as const, label: "Semua" },
+            { value: "PRIBADI" as const, label: "Pribadi" },
+            { value: "KONTRAKAN" as const, label: "Kontrakan" },
+            { value: "KOSONG" as const, label: "Rumah Kosong" },
+          ].map((item) => {
+            const active = occupancyFilter === item.value;
+            return (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setOccupancyFilter(item.value)}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  active
+                    ? "bg-app-primary text-white"
+                    : "border border-[var(--color-input-border)] bg-app-surface text-app-body-muted"
+                }`}
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 

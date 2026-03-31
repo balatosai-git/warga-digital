@@ -59,3 +59,4 @@ Thumbs.db
 !supabase/*.sql
 !supabase/migrations/*.sql
 supabase/latest_pemilik_dan_rumah.json
+bu.env.development
