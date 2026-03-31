@@ -81,3 +81,45 @@ ON CONFLICT (id) DO UPDATE SET
 --    ON CONFLICT DO NOTHING;
 --
 -- (Use role_id 4 for RT_ADMIN or 8 for RT_BENDAHARA.)
+
+-- Announcements (Info Warga)
+INSERT INTO announcements
+  (tenant_id, community_id, title, excerpt, author_label, is_pinned, published_at, is_active)
+VALUES
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Bazar RT 03 - Akhir Pekan Ini',
+   'Lokasi lapangan RT. Bawa keluarga, banyak stand makanan dan kerajinan warga.',
+   'Pengurus RT 03', true, NOW() - INTERVAL '1 hour', true),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Jasa Service AC Blok N',
+   'Bersih & isi freon. Hubungi Pak Budi untuk info lebih lanjut.',
+   'Blok N', false, NOW() - INTERVAL '2 hours', true),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Kumpul Kebersihan Minggu Pagi',
+   'Kerja bakti lingkungan. Meet di poskamling pukul 06.00.',
+   'Ketua RT', false, NOW() - INTERVAL '3 hours', true),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Lelang Barang Bekas Layak Pakai',
+   'Meja, kursi, lemari tersedia. Lihat katalog di grup WhatsApp RT.',
+   'Warga Blok A', false, NOW() - INTERVAL '5 hours', true)
+ON CONFLICT DO NOTHING;
+
+-- Kas RT transaction categories (template-based)
+INSERT INTO kas_rt_transaction_categories
+  (tenant_id, community_id, name, applies_to, title_template, desc_template, sort_order)
+VALUES
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'IPL', 'income', 'IPL Bulan {bulan}', 'Pembayaran IPL untuk blok {blok} periode {bulan}', 10),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Sumbangan', 'income', 'Sumbangan Bulan {bulan}', 'Sumbangan sukarela dari blok {blok} periode {bulan}', 20),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Denda', 'income', 'Denda dari Blok {blok}', 'Pembayaran denda dari blok {blok}', 30),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Pendapatan Lain', 'income', 'Pendapatan Lain-lain Bulan {bulan}', 'Pendapatan lain-lain periode {bulan}', 40),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Kebersihan', 'expense', 'Biaya Kebersihan {bulan}', 'Pembayaran petugas kebersihan periode {bulan}', 10),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Keamanan', 'expense', 'Biaya Keamanan/Satpam {bulan}', 'Honorarium satpam/keamanan periode {bulan}', 20),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Operasional', 'expense', 'Biaya Operasional {bulan}', 'Pengeluaran operasional RT periode {bulan}', 30),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Perbaikan & Pemeliharaan', 'expense', 'Biaya Perbaikan {bulan}', 'Biaya perbaikan/pemeliharaan lingkungan RT periode {bulan}', 40),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Pengeluaran Lain', 'expense', 'Pengeluaran Lain-lain {bulan}', 'Pengeluaran lain-lain periode {bulan}', 50)
+ON CONFLICT (tenant_id, community_id, name) DO UPDATE SET
+  applies_to = EXCLUDED.applies_to,
+  title_template = EXCLUDED.title_template,
+  desc_template = EXCLUDED.desc_template,
+  sort_order = EXCLUDED.sort_order,
+  is_active = true;

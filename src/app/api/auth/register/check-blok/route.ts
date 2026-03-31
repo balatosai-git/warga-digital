@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
 
     let ownerFullName = "—";
     let createdByFullName = "—";
+    let ownerUsername: string | null = null;
 
     const userIdsToFetch = new Set<string>();
     if (ownerRow?.user_id) userIdsToFetch.add(ownerRow.user_id);
@@ -63,12 +64,38 @@ export async function POST(request: NextRequest) {
     if (userIdsToFetch.size > 0) {
       const { data: users } = await supabase
         .from("users")
-        .select("id, full_name")
+        .select("id, full_name, username")
         .in("id", Array.from(userIdsToFetch));
 
-      const userMap = new Map((users ?? []).map((u) => [u.id, u.full_name ?? "—"]));
-      if (ownerRow?.user_id) ownerFullName = userMap.get(ownerRow.user_id) ?? "—";
-      if (createdByUserId) createdByFullName = userMap.get(createdByUserId) ?? "—";
+      const userMap = new Map(
+        (users ?? []).map((u) => [
+          u.id,
+          { full_name: u.full_name ?? "—", username: u.username ?? null },
+        ]),
+      );
+      if (ownerRow?.user_id) {
+        ownerFullName = userMap.get(ownerRow.user_id)?.full_name ?? "—";
+        ownerUsername = userMap.get(ownerRow.user_id)?.username ?? null;
+      }
+      if (createdByUserId) {
+        createdByFullName = userMap.get(createdByUserId)?.full_name ?? "—";
+      }
+    }
+
+    const isSystemCreatedBy = createdByFullName === "System Placeholder";
+    const isSystemPreregisteredOwner =
+      ownerUsername != null && ownerUsername.startsWith("sys_prereg_");
+    const hasRealOwner = !!ownerRow?.user_id && !isSystemPreregisteredOwner;
+    const requiresApproval = hasRealOwner && !isSystemCreatedBy;
+
+    // If house exists but has no real owner yet (or still system prereg owner),
+    // treat it as claimable on registration (no approval dialog needed).
+    if (!requiresApproval) {
+      return NextResponse.json({
+        exists: false,
+        blokRumah,
+        claimableExistingHouse: true,
+      });
     }
 
     return NextResponse.json({
@@ -76,6 +103,7 @@ export async function POST(request: NextRequest) {
       blokRumah,
       ownerFullName,
       createdByFullName,
+      claimableExistingHouse: false,
     });
   } catch (err) {
     console.error("[CheckBlok] Error:", err);

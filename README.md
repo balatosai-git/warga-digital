@@ -111,7 +111,13 @@ npm install
 
 ### Environment Variables
 
-Create a `.env.local` file in the project root and fill in the required values:
+Create a development env file in the project root:
+
+```bash
+cp .env.example .env.development
+```
+
+Then fill in the required values in `.env.development`:
 
 ```env
 SUPABASE_URL=https://your-project.supabase.co
@@ -190,7 +196,17 @@ npx supabase migration new your_migration_name
 
 ### Local Development
 
-Start the dev server:
+Recommended flow:
+
+```bash
+npx supabase start
+npm run dev
+```
+
+Next.js will load development env vars from `.env.development` automatically.
+If `.env.local` exists, it overrides same keys.
+
+Start the dev server only:
 
 ```bash
 npm run dev
@@ -227,7 +243,7 @@ Warga Digital uses an OTP provider abstraction so you can swap the implementatio
 
 To use Clawdbot:
 
-1. Set `OTP_PROVIDER=clawdbot` in `.env.local`.
+1. Set `OTP_PROVIDER=clawdbot` in `.env.development` (or `.env.local`).
 2. Set `CLAWDBOT_WEBHOOK_URL` to your webhook endpoint.
 3. Adjust the payload in `src/lib/otp/providers/clawdbot.ts` to match your API contract.
 

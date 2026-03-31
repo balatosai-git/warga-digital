@@ -11,6 +11,7 @@ dist/
 
 # Environment
 .env
+.env.development
 .env.local
 .env.development.local
 .env.test.local
@@ -57,3 +58,4 @@ Thumbs.db
 *.sql
 !supabase/*.sql
 !supabase/migrations/*.sql
+supabase/latest_pemilik_dan_rumah.json
