@@ -24,6 +24,14 @@ DO $$ BEGIN
   CREATE TYPE wallet_tx_category AS ENUM ('gaji', 'belanja', 'tagihan', 'tabungan', 'transfer', 'lainnya');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+DO $$ BEGIN
+  CREATE TYPE notification_type AS ENUM ('SYSTEM', 'KAS_RT', 'RUMAH', 'ORGANISASI', 'MARKETPLACE');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE notification_priority AS ENUM ('LOW', 'NORMAL', 'HIGH');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 
 -- =============================================================================
 -- PART 2 — NEW TABLES
@@ -74,6 +82,108 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
   updated_at TIMESTAMPTZ
 );
 
+-- In-app notifications
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  type notification_type NOT NULL DEFAULT 'SYSTEM',
+  priority notification_priority NOT NULL DEFAULT 'NORMAL',
+  title VARCHAR(160) NOT NULL,
+  body TEXT NOT NULL,
+  action_url VARCHAR(255),
+  entity_table VARCHAR(60),
+  entity_id UUID,
+  dedupe_key VARCHAR(120),
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id),
+  updated_at TIMESTAMPTZ,
+  updated_by UUID REFERENCES users(id)
+);
+
+-- Announcements / Info Warga
+CREATE TABLE IF NOT EXISTS announcements (
+  id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  community_id     UUID         REFERENCES communities(id) ON DELETE SET NULL,
+  title            VARCHAR(200) NOT NULL,
+  excerpt          TEXT,
+  body             TEXT,
+  author_label     VARCHAR(150) NOT NULL DEFAULT 'Pengurus RT',
+  author_user_id   UUID         REFERENCES users(id) ON DELETE SET NULL,
+  is_pinned        BOOLEAN      NOT NULL DEFAULT false,
+  published_at     TIMESTAMPTZ,
+  expires_at       TIMESTAMPTZ,
+  is_active        BOOLEAN      NOT NULL DEFAULT true,
+  created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  created_by       UUID         REFERENCES users(id) ON DELETE SET NULL,
+  updated_at       TIMESTAMPTZ,
+  updated_by       UUID         REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Structured Kas RT categories
+CREATE TABLE IF NOT EXISTS kas_rt_transaction_categories (
+  id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  community_id     UUID         NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+  name             VARCHAR(100) NOT NULL,
+  applies_to       VARCHAR(10)  NOT NULL DEFAULT 'both'
+                     CHECK (applies_to IN ('income', 'expense', 'both')),
+  title_template   VARCHAR(255) NOT NULL DEFAULT '',
+  desc_template    TEXT         NOT NULL DEFAULT '',
+  sort_order       INT          NOT NULL DEFAULT 0,
+  is_active        BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, community_id, name)
+);
+
+-- Kas RT soft delete column
+ALTER TABLE kas_rt_transactions
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
+
+-- Normalize WA numbers to canonical +62XXXXXXXXXX format
+CREATE OR REPLACE FUNCTION _strip_non_digits(v TEXT)
+RETURNS TEXT LANGUAGE sql IMMUTABLE STRICT AS $$
+  SELECT regexp_replace(v, '[^0-9]', '', 'g');
+$$;
+
+CREATE OR REPLACE FUNCTION normalize_wa_number(v TEXT)
+RETURNS TEXT LANGUAGE plpgsql IMMUTABLE STRICT AS $$
+DECLARE
+  digits TEXT;
+BEGIN
+  digits := _strip_non_digits(v);
+  IF digits LIKE '62%' THEN
+    RETURN '+' || digits;
+  END IF;
+  IF digits LIKE '0%' THEN
+    RETURN '+62' || substring(digits FROM 2);
+  END IF;
+  RETURN '+62' || digits;
+END;
+$$;
+
+UPDATE users
+SET wa_number = normalize_wa_number(wa_number),
+    updated_at = NOW()
+WHERE wa_number IS NOT NULL
+  AND wa_number <> normalize_wa_number(wa_number);
+
+UPDATE marketplace_items
+SET wa_number = normalize_wa_number(wa_number)
+WHERE wa_number IS NOT NULL
+  AND wa_number <> normalize_wa_number(wa_number);
+
+DROP FUNCTION IF EXISTS _strip_non_digits(TEXT);
+
+ALTER TABLE users
+  DROP CONSTRAINT IF EXISTS users_wa_number_canonical,
+  ADD CONSTRAINT users_wa_number_canonical
+    CHECK (wa_number IS NULL OR wa_number ~ '^\+62[0-9]{8,13}$');
+
 
 -- =============================================================================
 -- PART 3 — INDEXES FOR NEW TABLES
@@ -95,6 +205,41 @@ CREATE INDEX IF NOT EXISTS idx_wallet_tx_type
   ON wallet_transactions (user_id, type, date DESC);
 CREATE INDEX IF NOT EXISTS idx_wallet_tx_category
   ON wallet_transactions (user_id, category);
+CREATE INDEX IF NOT EXISTS sessions_user_id_last_active_at_idx
+  ON sessions (user_id, last_active_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_recipient_dedupe_unique
+  ON notifications (recipient_user_id, dedupe_key)
+  WHERE dedupe_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient_created
+  ON notifications (recipient_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient_unread
+  ON notifications (recipient_user_id, created_at DESC)
+  WHERE read_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_notifications_tenant_created
+  ON notifications (tenant_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_announcements_feed
+  ON announcements (tenant_id, is_active, published_at DESC)
+  WHERE is_active = true AND published_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_announcements_pinned
+  ON announcements (tenant_id, is_pinned, published_at DESC)
+  WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_announcements_community
+  ON announcements (community_id, published_at DESC)
+  WHERE community_id IS NOT NULL AND is_active = true;
+CREATE INDEX IF NOT EXISTS idx_announcements_author_user
+  ON announcements (author_user_id)
+  WHERE author_user_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_kas_rt_tx_categories_tenant_community
+  ON kas_rt_transaction_categories (tenant_id, community_id, applies_to, sort_order);
+CREATE INDEX IF NOT EXISTS idx_kas_rt_transactions_not_deleted
+  ON kas_rt_transactions (tenant_id, community_id, date)
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_kas_rt_transactions_deleted
+  ON kas_rt_transactions (deleted_at)
+  WHERE deleted_at IS NOT NULL;
 
 
 -- =============================================================================
@@ -104,6 +249,9 @@ CREATE INDEX IF NOT EXISTS idx_wallet_tx_category
 ALTER TABLE kas_rt_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE kas_rt_attachments  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wallet_transactions  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kas_rt_transaction_categories ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   CREATE POLICY "Anyone can read kas RT transactions"
@@ -128,6 +276,26 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   CREATE POLICY "Wallet transactions: no anon access"
     ON wallet_transactions FOR ALL TO anon USING (false) WITH CHECK (false);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Notifications: no anon access"
+    ON notifications FOR ALL TO anon USING (false) WITH CHECK (false);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Announcements: no anon access"
+    ON announcements FOR ALL TO anon USING (false) WITH CHECK (false);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "kas_rt_tx_categories_select_all"
+    ON kas_rt_transaction_categories FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "kas_rt_tx_categories_deny_anon_write"
+    ON kas_rt_transaction_categories FOR ALL TO anon USING (false) WITH CHECK (false);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 
@@ -171,6 +339,28 @@ INSERT INTO roles (id, name, description, scope) VALUES
   (7, 'PLATFORM_ARBITER', 'Arbiter platform',  'SYSTEM'),
   (8, 'RT_BENDAHARA',     'Bendahara RT (bisa mencatat transaksi kas RT)', 'TENANT')
 ON CONFLICT (id) DO NOTHING;
+
+-- Announcements (Info Warga)
+INSERT INTO announcements
+  (tenant_id, community_id, title, excerpt, author_label, is_pinned, published_at, is_active)
+VALUES
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Bazar RT 03 - Akhir Pekan Ini',
+   'Lokasi lapangan RT. Bawa keluarga, banyak stand makanan dan kerajinan warga.',
+   'Pengurus RT 03', true, NOW() - INTERVAL '1 hour', true),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Jasa Service AC Blok N',
+   'Bersih & isi freon. Hubungi Pak Budi untuk info lebih lanjut.',
+   'Blok N', false, NOW() - INTERVAL '2 hours', true),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Kumpul Kebersihan Minggu Pagi',
+   'Kerja bakti lingkungan. Meet di poskamling pukul 06.00.',
+   'Ketua RT', false, NOW() - INTERVAL '3 hours', true),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Lelang Barang Bekas Layak Pakai',
+   'Meja, kursi, lemari tersedia. Lihat katalog di grup WhatsApp RT.',
+   'Warga Blok A', false, NOW() - INTERVAL '5 hours', true)
+ON CONFLICT DO NOTHING;
 
 -- Placeholder system user (needed as owner for seed marketplace items)
 INSERT INTO users (id, full_name, status)
@@ -315,6 +505,26 @@ VALUES
    200000, 10, 'IDR', 'sesi', NULL, true, 'ACTIVE', NOW())
 
 ON CONFLICT (id) DO NOTHING;
+
+-- Kas RT transaction categories (with pre-fill templates)
+INSERT INTO kas_rt_transaction_categories
+  (tenant_id, community_id, name, applies_to, title_template, desc_template, sort_order)
+VALUES
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'IPL', 'income', 'IPL Bulan {bulan}', 'Pembayaran IPL untuk blok {blok} periode {bulan}', 10),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Sumbangan', 'income', 'Sumbangan Bulan {bulan}', 'Sumbangan sukarela dari blok {blok} periode {bulan}', 20),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Denda', 'income', 'Denda dari Blok {blok}', 'Pembayaran denda dari blok {blok}', 30),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Pendapatan Lain', 'income', 'Pendapatan Lain-lain Bulan {bulan}', 'Pendapatan lain-lain periode {bulan}', 40),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Kebersihan', 'expense', 'Biaya Kebersihan {bulan}', 'Pembayaran petugas kebersihan periode {bulan}', 10),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Keamanan', 'expense', 'Biaya Keamanan/Satpam {bulan}', 'Honorarium satpam/keamanan periode {bulan}', 20),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Operasional', 'expense', 'Biaya Operasional {bulan}', 'Pengeluaran operasional RT periode {bulan}', 30),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Perbaikan & Pemeliharaan', 'expense', 'Biaya Perbaikan {bulan}', 'Biaya perbaikan/pemeliharaan lingkungan RT periode {bulan}', 40),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Pengeluaran Lain', 'expense', 'Pengeluaran Lain-lain {bulan}', 'Pengeluaran lain-lain periode {bulan}', 50)
+ON CONFLICT (tenant_id, community_id, name) DO UPDATE SET
+  applies_to = EXCLUDED.applies_to,
+  title_template = EXCLUDED.title_template,
+  desc_template = EXCLUDED.desc_template,
+  sort_order = EXCLUDED.sort_order,
+  is_active = true;
 
 -- Kas RT transactions (reference = block of transferer; single description in details; free-text category)
 INSERT INTO kas_rt_transactions

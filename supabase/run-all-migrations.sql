@@ -80,6 +80,10 @@ CREATE TYPE kas_rt_tx_type AS ENUM ('income', 'expense');
 CREATE TYPE wallet_tx_type     AS ENUM ('income', 'expense');
 CREATE TYPE wallet_tx_category AS ENUM ('gaji', 'belanja', 'tagihan', 'tabungan', 'transfer', 'lainnya');
 
+-- Notifications
+CREATE TYPE notification_type AS ENUM ('SYSTEM', 'KAS_RT', 'RUMAH', 'ORGANISASI', 'MARKETPLACE');
+CREATE TYPE notification_priority AS ENUM ('LOW', 'NORMAL', 'HIGH');
+
 
 -- =============================================================================
 -- 3. CORE TABLES
@@ -330,6 +334,53 @@ CREATE TABLE sessions (
 
 
 -- =============================================================================
+-- 4B. COMMUNICATION TABLES
+-- =============================================================================
+
+-- In-app notifications per user
+CREATE TABLE notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  type notification_type NOT NULL DEFAULT 'SYSTEM',
+  priority notification_priority NOT NULL DEFAULT 'NORMAL',
+  title VARCHAR(160) NOT NULL,
+  body TEXT NOT NULL,
+  action_url VARCHAR(255),
+  entity_table VARCHAR(60),
+  entity_id UUID,
+  dedupe_key VARCHAR(120),
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES users(id),
+  updated_at TIMESTAMPTZ,
+  updated_by UUID REFERENCES users(id)
+);
+
+-- Tenant-scoped announcements / info warga posts
+CREATE TABLE announcements (
+  id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  community_id     UUID         REFERENCES communities(id) ON DELETE SET NULL,
+  title            VARCHAR(200) NOT NULL,
+  excerpt          TEXT,
+  body             TEXT,
+  author_label     VARCHAR(150) NOT NULL DEFAULT 'Pengurus RT',
+  author_user_id   UUID         REFERENCES users(id) ON DELETE SET NULL,
+  is_pinned        BOOLEAN      NOT NULL DEFAULT false,
+  published_at     TIMESTAMPTZ,
+  expires_at       TIMESTAMPTZ,
+  is_active        BOOLEAN      NOT NULL DEFAULT true,
+  created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  created_by       UUID         REFERENCES users(id) ON DELETE SET NULL,
+  updated_at       TIMESTAMPTZ,
+  updated_by       UUID         REFERENCES users(id) ON DELETE SET NULL
+);
+
+
+-- =============================================================================
 -- 5. MARKETPLACE TABLES
 -- =============================================================================
 
@@ -452,6 +503,22 @@ CREATE TABLE marketplace_transaction_events (
 -- 6. KAS RT TABLES
 -- =============================================================================
 
+-- Structured categories with templates for Kas RT transaction forms
+CREATE TABLE kas_rt_transaction_categories (
+  id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  community_id     UUID         NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+  name             VARCHAR(100) NOT NULL,
+  applies_to       VARCHAR(10)  NOT NULL DEFAULT 'both'
+                     CHECK (applies_to IN ('income', 'expense', 'both')),
+  title_template   VARCHAR(255) NOT NULL DEFAULT '',
+  desc_template    TEXT         NOT NULL DEFAULT '',
+  sort_order       INT          NOT NULL DEFAULT 0,
+  is_active        BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, community_id, name)
+);
+
 -- Kas RT transactions — income and expense records for the community fund
 CREATE TABLE kas_rt_transactions (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -464,6 +531,7 @@ CREATE TABLE kas_rt_transactions (
   reference    VARCHAR(50),            -- block of transferer, e.g. N2
   details      TEXT,                   -- single description field
   category     VARCHAR(255),           -- free-text category (tag)
+  deleted_at   TIMESTAMPTZ DEFAULT NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_by   UUID REFERENCES users(id),
   updated_at   TIMESTAMPTZ,
@@ -510,6 +578,9 @@ CREATE TABLE wallet_transactions (
 -- Users
 CREATE INDEX idx_users_wa_number_hash ON users(wa_number_hash);
 CREATE UNIQUE INDEX idx_users_wa_number_unique ON users(wa_number) WHERE wa_number IS NOT NULL;
+ALTER TABLE users
+  ADD CONSTRAINT users_wa_number_canonical
+  CHECK (wa_number IS NULL OR wa_number ~ '^\+62[0-9]{8,13}$');
 
 -- Tenants
 CREATE INDEX idx_tenants_status     ON tenants(status);
@@ -576,6 +647,33 @@ CREATE INDEX idx_otp_codes_created_at      ON otp_codes(created_at);
 CREATE UNIQUE INDEX idx_sessions_token_hash ON sessions(token_hash);
 CREATE INDEX idx_sessions_user_id           ON sessions(user_id);
 CREATE INDEX idx_sessions_expires_at        ON sessions(expires_at);
+CREATE INDEX sessions_user_id_last_active_at_idx ON sessions (user_id, last_active_at DESC);
+
+-- Notifications
+CREATE UNIQUE INDEX notifications_recipient_dedupe_unique
+  ON notifications (recipient_user_id, dedupe_key)
+  WHERE dedupe_key IS NOT NULL;
+CREATE INDEX idx_notifications_recipient_created
+  ON notifications (recipient_user_id, created_at DESC);
+CREATE INDEX idx_notifications_recipient_unread
+  ON notifications (recipient_user_id, created_at DESC)
+  WHERE read_at IS NULL;
+CREATE INDEX idx_notifications_tenant_created
+  ON notifications (tenant_id, created_at DESC);
+
+-- Announcements
+CREATE INDEX idx_announcements_feed
+  ON announcements (tenant_id, is_active, published_at DESC)
+  WHERE is_active = true AND published_at IS NOT NULL;
+CREATE INDEX idx_announcements_pinned
+  ON announcements (tenant_id, is_pinned, published_at DESC)
+  WHERE is_active = true;
+CREATE INDEX idx_announcements_community
+  ON announcements (community_id, published_at DESC)
+  WHERE community_id IS NOT NULL AND is_active = true;
+CREATE INDEX idx_announcements_author_user
+  ON announcements (author_user_id)
+  WHERE author_user_id IS NOT NULL;
 
 -- Marketplace
 CREATE INDEX idx_mkt_categories_domain  ON marketplace_categories (domain_id, is_active, sort_order);
@@ -591,11 +689,19 @@ CREATE INDEX idx_mkt_tx_item            ON marketplace_transactions (item_id);
 CREATE INDEX idx_mkt_tx_events_tx       ON marketplace_transaction_events (transaction_id, created_at);
 
 -- Kas RT
+CREATE INDEX idx_kas_rt_tx_categories_tenant_community
+  ON kas_rt_transaction_categories (tenant_id, community_id, applies_to, sort_order);
 CREATE INDEX idx_kas_rt_tx_tenant_community ON kas_rt_transactions (tenant_id, community_id, date DESC);
 CREATE INDEX idx_kas_rt_tx_type             ON kas_rt_transactions (type, date DESC);
 CREATE INDEX idx_kas_rt_tx_category         ON kas_rt_transactions (category);
 CREATE INDEX idx_kas_rt_tx_created_by       ON kas_rt_transactions (created_by);
 CREATE INDEX idx_kas_rt_attachments_tx      ON kas_rt_attachments (transaction_id);
+CREATE INDEX idx_kas_rt_transactions_not_deleted
+  ON kas_rt_transactions (tenant_id, community_id, date)
+  WHERE deleted_at IS NULL;
+CREATE INDEX idx_kas_rt_transactions_deleted
+  ON kas_rt_transactions (deleted_at)
+  WHERE deleted_at IS NOT NULL;
 
 -- Wallet
 CREATE INDEX idx_wallet_tx_user_id   ON wallet_transactions (user_id, date DESC);
@@ -623,6 +729,8 @@ ALTER TABLE authority_assignments        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE verifications                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE otp_codes                    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sessions                     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE announcements                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace_domains          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace_categories       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace_items            ENABLE ROW LEVEL SECURITY;
@@ -630,6 +738,7 @@ ALTER TABLE marketplace_item_media       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace_item_tags        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace_transactions     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace_transaction_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kas_rt_transaction_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE kas_rt_transactions          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE kas_rt_attachments           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wallet_transactions          ENABLE ROW LEVEL SECURITY;
@@ -672,6 +781,10 @@ CREATE POLICY "OTP codes: no anon access"
   ON otp_codes FOR ALL TO anon USING (false) WITH CHECK (false);
 CREATE POLICY "Sessions: no anon access"
   ON sessions FOR ALL TO anon USING (false) WITH CHECK (false);
+CREATE POLICY "Notifications: no anon access"
+  ON notifications FOR ALL TO anon USING (false) WITH CHECK (false);
+CREATE POLICY "Announcements: no anon access"
+  ON announcements FOR ALL TO anon USING (false) WITH CHECK (false);
 
 -- ── Marketplace: public read for active catalog, write via service_role only ──
 
@@ -706,6 +819,11 @@ CREATE POLICY "Marketplace transaction events: no anon access"
   ON marketplace_transaction_events FOR ALL TO anon USING (false) WITH CHECK (false);
 
 -- ── Kas RT: public read for transparency, write via service_role only ──
+
+CREATE POLICY "kas_rt_tx_categories_select_all"
+  ON kas_rt_transaction_categories FOR SELECT USING (true);
+CREATE POLICY "kas_rt_tx_categories_deny_anon_write"
+  ON kas_rt_transaction_categories FOR ALL TO anon USING (false) WITH CHECK (false);
 
 CREATE POLICY "Anyone can read kas RT transactions"
   ON kas_rt_transactions FOR SELECT USING (true);
@@ -815,6 +933,27 @@ INSERT INTO badges (id, code, name, description, icon, sort_order) VALUES
   (5, 'warga_aktif',   'Warga Aktif',   'Sudah 30 hari aktif di aplikasi',         '⭐', 5),
   (6, 'pembayar_tepat', 'Pembayar Tepat','Selalu bayar iuran tepat waktu',          '✅', 6),
   (7, 'penggerak_rt',  'Penggerak RT',  'Membantu menggerakkan warga',             '🤝', 7);
+
+-- Announcements (Info Warga)
+INSERT INTO announcements
+  (tenant_id, community_id, title, excerpt, author_label, is_pinned, published_at, is_active)
+VALUES
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Bazar RT 03 - Akhir Pekan Ini',
+   'Lokasi lapangan RT. Bawa keluarga, banyak stand makanan dan kerajinan warga.',
+   'Pengurus RT 03', true, NOW() - INTERVAL '1 hour', true),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Jasa Service AC Blok N',
+   'Bersih & isi freon. Hubungi Pak Budi untuk info lebih lanjut.',
+   'Blok N', false, NOW() - INTERVAL '2 hours', true),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Kumpul Kebersihan Minggu Pagi',
+   'Kerja bakti lingkungan. Meet di poskamling pukul 06.00.',
+   'Ketua RT', false, NOW() - INTERVAL '3 hours', true),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid,
+   'Lelang Barang Bekas Layak Pakai',
+   'Meja, kursi, lemari tersedia. Lihat katalog di grup WhatsApp RT.',
+   'Warga Blok A', false, NOW() - INTERVAL '5 hours', true);
 
 -- Marketplace domains
 INSERT INTO marketplace_domains (id, code, name, description, icon, sort_order) VALUES
@@ -940,6 +1079,20 @@ VALUES
    'Tim Bersih Blok A', 'Bersih Rumah & Kantor', 'bersih-rumah-kantor',
    'Deep clean rumah, pembersihan taman, garasi', 200000, 10, 'IDR', 'sesi',
    NULL, true, 'ACTIVE', NOW());
+
+-- Kas RT transaction categories (with pre-fill templates)
+INSERT INTO kas_rt_transaction_categories
+  (tenant_id, community_id, name, applies_to, title_template, desc_template, sort_order)
+VALUES
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'IPL', 'income', 'IPL Bulan {bulan}', 'Pembayaran IPL untuk blok {blok} periode {bulan}', 10),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Sumbangan', 'income', 'Sumbangan Bulan {bulan}', 'Sumbangan sukarela dari blok {blok} periode {bulan}', 20),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Denda', 'income', 'Denda dari Blok {blok}', 'Pembayaran denda dari blok {blok}', 30),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Pendapatan Lain', 'income', 'Pendapatan Lain-lain Bulan {bulan}', 'Pendapatan lain-lain periode {bulan}', 40),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Kebersihan', 'expense', 'Biaya Kebersihan {bulan}', 'Pembayaran petugas kebersihan periode {bulan}', 10),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Keamanan', 'expense', 'Biaya Keamanan/Satpam {bulan}', 'Honorarium satpam/keamanan periode {bulan}', 20),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Operasional', 'expense', 'Biaya Operasional {bulan}', 'Pengeluaran operasional RT periode {bulan}', 30),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Perbaikan & Pemeliharaan', 'expense', 'Biaya Perbaikan {bulan}', 'Biaya perbaikan/pemeliharaan lingkungan RT periode {bulan}', 40),
+  ('a0000000-0000-7000-8000-000000000001'::uuid, 'b0000000-0000-7000-8000-000000000002'::uuid, 'Pengeluaran Lain', 'expense', 'Pengeluaran Lain-lain {bulan}', 'Pengeluaran lain-lain periode {bulan}', 50);
 
 -- Sample Kas RT transactions (reference = block of transferer, e.g. N2; single description in details)
 INSERT INTO kas_rt_transactions
