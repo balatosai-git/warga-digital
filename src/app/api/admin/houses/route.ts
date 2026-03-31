@@ -10,6 +10,11 @@ interface AdminHouseRow {
   name: string;
   address: string | null;
   total_residents: number;
+  residents: Array<{
+    user_id: string;
+    full_name: string;
+    relationship: string | null;
+  }>;
   status: string;
   is_active: boolean;
   owner_full_name: string | null;
@@ -57,8 +62,12 @@ export async function GET() {
   }
 
   const rows = (data ?? []) as unknown as Array<
-    Omit<AdminHouseRow, "total_residents" | "owner_full_name" | "source_full_name"> & {
+    Omit<
+      AdminHouseRow,
+      "total_residents" | "residents" | "owner_full_name" | "source_full_name"
+    > & {
       user_houses?: Array<{
+        user_id: string | null;
         relationship: string | null;
         status: string | null;
         users:
@@ -77,7 +86,28 @@ export async function GET() {
     const activeResidentLinks = (row.user_houses ?? []).filter(
       (link) => link.status === "ACTIVE",
     );
-    const totalResidents = activeResidentLinks.length;
+    const residentMap = new Map<
+      string,
+      {
+        user_id: string;
+        full_name: string;
+        relationship: string | null;
+      }
+    >();
+    for (const link of activeResidentLinks) {
+      const userId = link.user_id?.trim();
+      if (!userId || residentMap.has(userId)) continue;
+      const fullNameRaw = Array.isArray(link.users)
+        ? (link.users[0]?.full_name ?? null)
+        : (link.users?.full_name ?? null);
+      residentMap.set(userId, {
+        user_id: userId,
+        full_name: fullNameRaw?.trim() || "Tanpa nama",
+        relationship: link.relationship,
+      });
+    }
+    const residents = Array.from(residentMap.values());
+    const totalResidents = residents.length;
 
     const ownerFullName =
       activeResidentLinks
@@ -97,9 +127,10 @@ export async function GET() {
     return {
       id: row.id,
       blok_rumah: row.blok_rumah,
-      name: ownerFullName ?? sourceFullName ?? row.name,
+      name: ownerFullName ?? sourceFullName ?? "",
       address: row.address,
       total_residents: totalResidents,
+      residents,
       status: row.status,
       is_active: row.is_active,
       owner_full_name: ownerFullName,

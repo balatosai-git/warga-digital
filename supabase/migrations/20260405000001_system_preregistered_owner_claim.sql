@@ -156,12 +156,11 @@ BEGIN
     RETURNING id, username
   ),
   users_map AS (
-    SELECT u.id AS user_id, u.username
-    FROM users u
-    WHERE u.username LIKE 'sys_prereg_%'
-      AND u.username IN (
-        SELECT 'sys_prereg_' || LOWER(blok_key) FROM prereg_candidates
-      )
+    SELECT DISTINCT ON (uu.username)
+      uu.id AS user_id,
+      uu.username
+    FROM upsert_users uu
+    ORDER BY uu.username, uu.id
   ),
   upsert_tenant_users AS (
     INSERT INTO tenant_users (id, tenant_id, user_id, status)

@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   ArrowPathIcon,
   BuildingOffice2Icon,
+  ChevronDownIcon,
   ChevronLeftIcon,
+  ChevronUpIcon,
   HomeModernIcon,
   MagnifyingGlassIcon,
   UserGroupIcon,
@@ -33,6 +35,11 @@ interface HouseItem {
   is_active: boolean;
   owner_full_name?: string | null;
   source_full_name?: string | null;
+  residents?: Array<{
+    user_id: string;
+    full_name: string;
+    relationship: string | null;
+  }>;
 }
 
 function statusLabel(status: string): string {
@@ -41,7 +48,7 @@ function statusLabel(status: string): string {
   return "Pribadi";
 }
 
-type OccupancyFilter = "ALL" | "KONTRAKAN" | "PRIBADI" | "KOSONG";
+type OccupancyFilter = "ALL" | "KONTRAKAN" | "PRIBADI" | "KOSONG" | "TERISI";
 
 export default function AdminBlokRumahPage() {
   const router = useRouter();
@@ -56,6 +63,7 @@ export default function AdminBlokRumahPage() {
   const [query, setQuery] = useState("");
   const [occupancyFilter, setOccupancyFilter] = useState<OccupancyFilter>("ALL");
   const [houses, setHouses] = useState<HouseItem[]>([]);
+  const [expandedHouseIds, setExpandedHouseIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setHasMounted(true);
@@ -126,6 +134,10 @@ export default function AdminBlokRumahPage() {
     }
   }, []);
 
+  const toggleExpandedHouse = useCallback((houseId: string) => {
+    setExpandedHouseIds((prev) => ({ ...prev, [houseId]: !prev[houseId] }));
+  }, []);
+
   useEffect(() => {
     if (!checkingAccess && isAuthenticated) {
       void loadHouses();
@@ -135,11 +147,15 @@ export default function AdminBlokRumahPage() {
   const filteredHouses = useMemo(() => {
     const q = query.trim().toLowerCase();
     return houses.filter((house) => {
+      if (occupancyFilter === "TERISI" && (house.total_residents ?? 0) === 0) {
+        return false;
+      }
       if (occupancyFilter === "KOSONG" && (house.total_residents ?? 0) > 0) {
         return false;
       }
       if (
         occupancyFilter !== "ALL" &&
+        occupancyFilter !== "TERISI" &&
         occupancyFilter !== "KOSONG" &&
         house.status !== occupancyFilter
       ) {
@@ -252,7 +268,7 @@ export default function AdminBlokRumahPage() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cari blok, nama rumah, atau alamat..."
+            placeholder="Cari blok, nama pengguna, atau alamat..."
             className="flex-1 bg-transparent text-sm text-app-body placeholder:text-app-body-muted/50 outline-none"
           />
           {query && (
@@ -272,7 +288,8 @@ export default function AdminBlokRumahPage() {
             { value: "ALL" as const, label: "Semua" },
             { value: "PRIBADI" as const, label: "Pribadi" },
             { value: "KONTRAKAN" as const, label: "Kontrakan" },
-            { value: "KOSONG" as const, label: "Rumah Kosong" },
+            { value: "KOSONG" as const, label: "Kosong" },
+            { value: "TERISI" as const, label: "Terisi" },
           ].map((item) => {
             const active = occupancyFilter === item.value;
             return (
@@ -322,11 +339,14 @@ export default function AdminBlokRumahPage() {
           </div>
         ) : (
           <div className="space-y-2.5">
-            {filteredHouses.map((house) => (
-              <article
-                key={house.id}
-                className="rounded-2xl bg-app-surface p-4 shadow-[0_8px_24px_rgba(0,40,5,0.06)]"
-              >
+            {filteredHouses.map((house) => {
+              const isExpanded = Boolean(expandedHouseIds[house.id]);
+              const residents = house.residents ?? [];
+              return (
+                <article
+                  key={house.id}
+                  className="rounded-2xl bg-app-surface p-4 shadow-[0_8px_24px_rgba(0,40,5,0.06)]"
+                >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-wide text-app-body-muted">
@@ -336,15 +356,30 @@ export default function AdminBlokRumahPage() {
                       {house.blok_rumah ?? "-"}
                     </h2>
                   </div>
-                  <span className="rounded-full bg-app-primary-muted px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-app-primary">
-                    {statusLabel(house.status)}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="rounded-full bg-app-primary-muted px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-app-primary">
+                      {statusLabel(house.status)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleExpandedHouse(house.id)}
+                      className="rounded-full border border-[var(--color-input-border)] p-1 text-app-body-muted transition hover:bg-app-surface-alt"
+                      aria-label={isExpanded ? "Sembunyikan daftar warga" : "Lihat daftar warga"}
+                      title={isExpanded ? "Sembunyikan daftar warga" : "Lihat daftar warga"}
+                    >
+                      {isExpanded ? (
+                        <ChevronUpIcon className="h-4 w-4" />
+                      ) : (
+                        <ChevronDownIcon className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-app-body-muted">
                   <div className="flex items-center gap-1.5">
                     <BuildingOffice2Icon className="h-4 w-4" />
-                    <span className="truncate">{house.name || "Tanpa nama"}</span>
+                    <span className="truncate">{house.name || "Belum ada pemilik"}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <UserGroupIcon className="h-4 w-4" />
@@ -357,8 +392,34 @@ export default function AdminBlokRumahPage() {
                     {house.address}
                   </p>
                 )}
-              </article>
-            ))}
+
+                {isExpanded && (
+                  <div className="mt-3 rounded-xl border border-[var(--color-input-border)] bg-app-surface-alt/70 p-2.5">
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-app-body-muted">
+                      Daftar Warga
+                    </p>
+                    {residents.length === 0 ? (
+                      <p className="text-xs text-app-body-muted">Belum ada warga terdaftar</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {residents.map((resident) => (
+                          <li
+                            key={resident.user_id}
+                            className="flex items-center justify-between gap-2 rounded-lg bg-app-surface px-2.5 py-1.5 text-xs"
+                          >
+                            <span className="truncate text-app-body">{resident.full_name}</span>
+                            <span className="shrink-0 rounded-full bg-app-primary-muted px-2 py-0.5 text-[10px] font-semibold text-app-primary">
+                              {resident.relationship ?? "WARGA"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                </article>
+              );
+            })}
           </div>
         )}
       </div>
