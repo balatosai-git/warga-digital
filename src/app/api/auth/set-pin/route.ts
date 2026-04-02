@@ -11,10 +11,7 @@ export async function POST(request: NextRequest) {
     const { userId, pin, confirmPin } = body;
 
     if (!userId || typeof userId !== "string") {
-      return NextResponse.json(
-        { error: "User tidak valid" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "User tidak valid" }, { status: 400 });
     }
 
     const pinStr = String(pin ?? "").trim();
@@ -23,14 +20,14 @@ export async function POST(request: NextRequest) {
     if (!PIN_REGEX.test(pinStr)) {
       return NextResponse.json(
         { error: "PIN harus 4 digit angka" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (pinStr !== confirmStr) {
       return NextResponse.json(
         { error: "PIN dan konfirmasi PIN tidak sama" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -45,14 +42,14 @@ export async function POST(request: NextRequest) {
     if (fetchError || !user) {
       return NextResponse.json(
         { error: "User tidak ditemukan" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     if (user.pin_hash) {
       return NextResponse.json(
         { error: "PIN sudah diatur. Gunakan halaman login." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -72,7 +69,7 @@ export async function POST(request: NextRequest) {
       console.error("[SetPin] Update error:", updateError);
       return NextResponse.json(
         { error: "Gagal menyimpan PIN" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -115,9 +112,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     console.error("[SetPin] Error:", err);
-    return NextResponse.json(
-      { error: "Terjadi kesalahan" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Terjadi kesalahan" }, { status: 500 });
   }
 }

@@ -7,8 +7,18 @@ import {
   normalizeWaNumber,
   getWaNumberVariants,
 } from "@/lib/phone-utils";
+import { loginLimiter, rateLimitResponse } from "@/lib/rate-limiter";
 
 const PIN_REGEX = /^\d{4}$/;
+
+/**
+ * Extract a rate limit key from the request.
+ * Uses the login identifier (phone/username) to prevent brute force
+ * against specific accounts, regardless of IP rotation.
+ */
+function getRateLimitKey(login: string): string {
+  return `login:${login.trim().toLowerCase()}`;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +38,14 @@ export async function POST(request: NextRequest) {
         { error: "PIN harus 4 digit angka" },
         { status: 400 },
       );
+    }
+
+    // ── Rate limiting ──────────────────────────────────────────────────────
+    const rateKey = getRateLimitKey(login);
+    const rateResult = loginLimiter.consume(rateKey);
+
+    if (!rateResult.allowed) {
+      return rateLimitResponse(rateResult);
     }
 
     const loginTrimmed = login.trim();
@@ -111,8 +129,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "PIN salah." }, { status: 401 });
     }
 
+    // ── Create session ─────────────────────────────────────────────────────
     const jwt = await createSession(user.id);
     await setSessionCookie(jwt);
+
+    // Reset rate limit on successful login
+    loginLimiter.reset(rateKey);
 
     return NextResponse.json({
       success: true,

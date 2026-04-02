@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionFromCookie } from "@/lib/auth/session";
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_COMMUNITY_ID,
@@ -18,6 +19,12 @@ export interface KasRtCategoryRow {
 
 export async function GET() {
   try {
+    // Require authentication to access kas-rt categories
+    const session = await getSessionFromCookie();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const tenantId = DEFAULT_TENANT_ID;
     const communityId = DEFAULT_COMMUNITY_ID;
 

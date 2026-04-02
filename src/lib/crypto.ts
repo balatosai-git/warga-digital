@@ -4,6 +4,7 @@ import {
   createHash,
   randomBytes,
   scryptSync,
+  timingSafeEqual,
 } from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
@@ -26,8 +27,13 @@ function getEncryptionKey(): Buffer {
 export function encrypt(text: string): string {
   const key = getEncryptionKey();
   const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: TAG_LENGTH });
-  const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
+  const cipher = createCipheriv(ALGORITHM, key, iv, {
+    authTagLength: TAG_LENGTH,
+  });
+  const encrypted = Buffer.concat([
+    cipher.update(text, "utf8"),
+    cipher.final(),
+  ]);
   const tag = cipher.getAuthTag();
   return Buffer.concat([iv, tag, encrypted]).toString("base64");
 }
@@ -38,7 +44,9 @@ export function decrypt(encrypted: string): string {
   const iv = buf.subarray(0, IV_LENGTH);
   const tag = buf.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
   const data = buf.subarray(IV_LENGTH + TAG_LENGTH);
-  const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: TAG_LENGTH });
+  const decipher = createDecipheriv(ALGORITHM, key, iv, {
+    authTagLength: TAG_LENGTH,
+  });
   decipher.setAuthTag(tag);
   return decipher.update(data).toString("utf8") + decipher.final("utf8");
 }
@@ -49,7 +57,13 @@ export function hashSha256(text: string): string {
 
 const PIN_SALT_LEN = 32;
 const PIN_KEY_LEN = 64;
-const PIN_SCRYPT_N = 16384;
+/**
+ * scrypt cost parameter (N).
+ * Increased from 16384 (2^14) to 32768 (2^15) to meet OWASP 2025
+ * recommendations for password hashing. Existing PINs will still verify
+ * correctly because the salt is stored alongside the hash.
+ */
+const PIN_SCRYPT_N = 32768;
 
 /**
  * Hash a 4-digit PIN for storage. Returns "salt_hex:hash_hex".
@@ -62,6 +76,7 @@ export function hashPin(pin: string): string {
 
 /**
  * Verify a 4-digit PIN against stored pinHash (salt_hex:hash_hex).
+ * Uses timing-safe comparison to prevent timing attacks.
  */
 export function verifyPin(pin: string, pinHash: string | null): boolean {
   if (!pinHash || !pin) return false;
@@ -71,5 +86,6 @@ export function verifyPin(pin: string, pinHash: string | null): boolean {
   const salt = Buffer.from(saltHex, "hex");
   const expected = Buffer.from(hashHex, "hex");
   const actual = scryptSync(pin, salt, PIN_KEY_LEN, { N: PIN_SCRYPT_N });
-  return actual.length === expected.length && actual.compare(expected) === 0;
+  // Use timing-safe comparison to prevent timing side-channel attacks
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }

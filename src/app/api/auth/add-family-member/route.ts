@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionFromCookie } from "@/lib/auth/session";
 import { uuidv7 } from "uuidv7";
-import {
-  DEFAULT_TENANT_ID,
-  DEFAULT_ROLE_WARGA_ID,
-} from "@/lib/constants/seed-ids";
+import { DEFAULT_ROLE_WARGA_ID } from "@/lib/constants/seed-ids";
 import {
   normalizeWaNumber,
   validateNormalizedWaNumber,
@@ -12,20 +10,38 @@ import {
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,30}$/;
 
+/**
+ * POST /api/auth/add-family-member
+ *
+ * Adds a new family member to the authenticated user's house.
+ *
+ * SECURITY FIX (2025-02-09):
+ * Previously, `ownerUserId` was taken from the request body, allowing any
+ * authenticated user to add members to ANY household by specifying a
+ * different owner ID. This has been fixed to derive the owner identity
+ * exclusively from the session cookie and verify house ownership.
+ *
+ * Body: { houseId?: string, fullName: string, username?: string, waNumber: string }
+ * - houseId is optional; if omitted, the user's primary house is used.
+ * - The caller MUST be an OWNER of the target house.
+ */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { ownerUserId, houseId, fullName, username, waNumber } = body;
+    // ── 1. Authenticate the caller ─────────────────────────────────────────
+    const session = await getSessionFromCookie();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    if (!ownerUserId || typeof ownerUserId !== "string") {
-      return NextResponse.json(
-        { error: "Pemilik rumah tidak valid" },
-        { status: 400 },
-      );
-    }
-    if (!houseId || typeof houseId !== "string") {
-      return NextResponse.json({ error: "Rumah tidak valid" }, { status: 400 });
-    }
+    const body = await request.json();
+    const {
+      fullName,
+      username: usernameRaw,
+      waNumber,
+      houseId: bodyHouseId,
+    } = body;
+
+    // ── 2. Validate input ──────────────────────────────────────────────────
     if (
       !fullName ||
       typeof fullName !== "string" ||
@@ -38,9 +54,14 @@ export async function POST(request: NextRequest) {
     }
 
     const trimmedName = fullName.trim();
+
     let usernameVal: string | null = null;
-    if (username != null && typeof username === "string" && username.trim()) {
-      const u = username.trim();
+    if (
+      usernameRaw != null &&
+      typeof usernameRaw === "string" &&
+      usernameRaw.trim()
+    ) {
+      const u = usernameRaw.trim();
       if (!USERNAME_REGEX.test(u)) {
         return NextResponse.json(
           { error: "Username 3–30 karakter, huruf/angka/underscore saja" },
@@ -64,21 +85,81 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServerClient();
 
-    const { data: house, error: houseErr } = await supabase
-      .from("houses")
-      .select("id, tenant_id, community_id")
-      .eq("id", houseId)
-      .single();
+    // ── 3. Verify house ownership ──────────────────────────────────────────
+    // Derive the target house from the request or fall back to the caller's
+    // primary house. In BOTH cases we verify the caller is an OWNER.
+    let houseId: string;
+    let tenantId: string;
 
-    if (houseErr || !house) {
-      return NextResponse.json(
-        { error: "Rumah tidak ditemukan" },
-        { status: 404 },
-      );
+    if (bodyHouseId && typeof bodyHouseId === "string") {
+      // Caller specified a house — verify they own it
+      const { data: ownerLink, error: ownerErr } = await supabase
+        .from("user_houses")
+        .select("house_id, tenant_id")
+        .eq("user_id", session.userId)
+        .eq("house_id", bodyHouseId)
+        .eq("relationship", "OWNER")
+        .eq("status", "ACTIVE")
+        .maybeSingle();
+
+      if (ownerErr) {
+        console.error("[AddFamilyMember] House lookup error:", ownerErr);
+        return NextResponse.json(
+          { error: "Gagal memverifikasi rumah" },
+          { status: 500 },
+        );
+      }
+
+      if (!ownerLink) {
+        return NextResponse.json(
+          {
+            error:
+              "Rumah tidak ditemukan atau Anda bukan kepala keluarga di rumah ini.",
+          },
+          { status: 403 },
+        );
+      }
+
+      houseId = ownerLink.house_id;
+      tenantId = ownerLink.tenant_id;
+    } else {
+      // No house specified — use the caller's primary house
+      const { data: ownerLink, error: ownerErr } = await supabase
+        .from("user_houses")
+        .select("house_id, tenant_id")
+        .eq("user_id", session.userId)
+        .eq("relationship", "OWNER")
+        .eq("status", "ACTIVE")
+        .order("is_primary", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (ownerErr) {
+        console.error(
+          "[AddFamilyMember] Primary house lookup error:",
+          ownerErr,
+        );
+        return NextResponse.json(
+          { error: "Gagal memverifikasi rumah" },
+          { status: 500 },
+        );
+      }
+
+      if (!ownerLink) {
+        return NextResponse.json(
+          {
+            error:
+              "Anda bukan kepala keluarga. Hanya kepala keluarga yang dapat menambah anggota.",
+          },
+          { status: 403 },
+        );
+      }
+
+      houseId = ownerLink.house_id;
+      tenantId = ownerLink.tenant_id;
     }
 
-    const tenantId = house.tenant_id;
-
+    // ── 4. Create the new user ─────────────────────────────────────────────
     const newUserId = uuidv7();
     const { error: insertUserErr } = await supabase.from("users").insert({
       id: newUserId,
@@ -102,6 +183,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ── 5. Register user in the tenant ─────────────────────────────────────
     const { data: tenantUser, error: tuErr } = await supabase
       .from("tenant_users")
       .upsert(
@@ -119,6 +201,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ── 6. Assign default WARGA role ───────────────────────────────────────
     const { error: roleErr } = await supabase.from("tenant_user_roles").insert({
       tenant_user_id: tenantUser.id,
       role_id: DEFAULT_ROLE_WARGA_ID,
@@ -127,6 +210,7 @@ export async function POST(request: NextRequest) {
       console.error("[AddFamilyMember] Insert role error:", roleErr);
     }
 
+    // ── 7. Link user to the house as FAMILY member ─────────────────────────
     const { error: uhErr } = await supabase.from("user_houses").insert({
       id: uuidv7(),
       tenant_id: tenantId,
@@ -135,7 +219,7 @@ export async function POST(request: NextRequest) {
       relationship: "FAMILY",
       is_primary: false,
       status: "ACTIVE",
-      created_by: ownerUserId,
+      created_by: session.userId,
     });
 
     if (uhErr) {

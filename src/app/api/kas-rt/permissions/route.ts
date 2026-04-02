@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookie } from "@/lib/auth/session";
 import { createServerClient } from "@/lib/supabase/server";
-import { DEFAULT_TENANT_ID, ROLE_IDS_CAN_SUBMIT_KAS_RT } from "@/lib/constants/seed-ids";
+import {
+  DEFAULT_TENANT_ID,
+  ROLE_IDS_CAN_SUBMIT_KAS_RT,
+} from "@/lib/constants/seed-ids";
 
 /**
  * Returns Kas RT permissions for the current user (from session cookie).
@@ -12,7 +15,7 @@ export async function GET() {
   try {
     const session = await getSessionFromCookie();
     if (!session) {
-      return NextResponse.json({ canSubmitTransaction: false });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const supabase = createServerClient();

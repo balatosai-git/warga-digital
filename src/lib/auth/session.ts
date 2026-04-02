@@ -22,13 +22,18 @@ export async function createSession(userId: string): Promise<string> {
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000);
 
-  await supabase.from("sessions").insert({
+  const { error } = await supabase.from("sessions").insert({
     id: sessionId,
     user_id: userId,
     token_hash: tokenHash,
     expires_at: expiresAt.toISOString(),
     last_active_at: new Date().toISOString(),
   });
+
+  if (error) {
+    console.error("[Session] createSession error:", error);
+    throw new Error("Failed to create session");
+  }
 
   const jwt = await signSessionToken(sessionId, userId);
   return jwt;
@@ -57,28 +62,45 @@ export async function getSessionFromCookie(): Promise<{
   if (!payload) return null;
 
   const supabase = createServerClient();
-  const { data: session } = await supabase
+  const { data: session, error: fetchError } = await supabase
     .from("sessions")
     .select("id, user_id, expires_at, last_active_at")
     .eq("id", payload.sessionId)
-    .single();
+    .maybeSingle();
+
+  if (fetchError) {
+    console.error("[Session] getSessionFromCookie fetch error:", fetchError);
+    return null;
+  }
 
   if (!session || new Date(session.expires_at) < new Date()) {
     return null;
   }
 
   // ── Sync last_active_at back to Supabase (throttled) ──────────────────────
-  // Fire-and-forget: do not await so we never block the request path.
+  // Fire-and-forget: do not await so we never block the request path,
+  // but log errors for observability.
   const lastActive = session.last_active_at
     ? new Date(session.last_active_at).getTime()
     : 0;
   const isStale = Date.now() - lastActive > LAST_ACTIVE_SYNC_INTERVAL_MS;
 
   if (isStale) {
-    void supabase
-      .from("sessions")
-      .update({ last_active_at: new Date().toISOString() })
-      .eq("id", payload.sessionId);
+    // Fire-and-forget: update last_active_at without blocking the request.
+    // Wrapped in an async IIFE so we can use try/catch for error logging.
+    (async () => {
+      try {
+        const { error } = await supabase
+          .from("sessions")
+          .update({ last_active_at: new Date().toISOString() })
+          .eq("id", payload.sessionId);
+        if (error) {
+          console.error("[Session] last_active_at update error:", error);
+        }
+      } catch (err) {
+        console.error("[Session] last_active_at update unexpected error:", err);
+      }
+    })();
   }
 
   return { userId: payload.userId, sessionId: payload.sessionId };
@@ -91,5 +113,13 @@ export async function clearSessionCookie() {
 
 export async function destroySession(sessionId: string) {
   const supabase = createServerClient();
-  await supabase.from("sessions").delete().eq("id", sessionId);
+  const { error } = await supabase
+    .from("sessions")
+    .delete()
+    .eq("id", sessionId);
+
+  if (error) {
+    console.error("[Session] destroySession error:", error);
+    // Don't throw — caller may still want to clear the cookie
+  }
 }
