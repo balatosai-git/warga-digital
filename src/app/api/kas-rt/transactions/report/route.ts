@@ -2,15 +2,17 @@
 
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionFromCookie } from "@/lib/auth/session";
 import {
-  DEFAULT_COMMUNITY_ID,
   DEFAULT_TENANT_ID,
+  DEFAULT_COMMUNITY_ID,
 } from "@/lib/constants/seed-ids";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Row = {
+type TransactionRow = {
   id: string;
   title: string;
   amount: number;
@@ -47,104 +49,182 @@ function formatDateShort(iso: string): string {
   });
 }
 
-// ── PDF builder (plain PDF 1.4, no external deps) ────────────────────────────
+// ── PDF Builder (pdf-lib) ────────────────────────────────────────────────────
 
-function buildSimplePdf(lines: string[]): Uint8Array {
-  const escapeText = (text: string) =>
-    text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+async function buildPdf(
+  rows: TransactionRow[],
+  startLabel: string,
+  endLabel: string,
+  categoryFilter: string | null,
+  blockFilter: string | null,
+  totalIncome: number,
+  totalExpense: number,
+  net: number,
+): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const wrapText = (text: string, maxLen: number): string[] => {
-    const result: string[] = [];
-    let remaining = text;
-    while (remaining.length > maxLen) {
-      let breakIndex = remaining.lastIndexOf(" ", maxLen);
-      if (breakIndex <= 0) breakIndex = maxLen;
-      result.push(remaining.slice(0, breakIndex));
-      remaining = remaining.slice(breakIndex).trimStart();
-    }
-    if (remaining.length > 0) result.push(remaining);
-    return result;
+  const PAGE_WIDTH = 595.28; // A4 width in points
+  const PAGE_HEIGHT = 841.89; // A4 height in points
+  const MARGIN = 50;
+  const LINE_HEIGHT = 14;
+
+  let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let y = PAGE_HEIGHT - MARGIN;
+
+  const drawText = (
+    text: string,
+    xPos: number,
+    yPos: number,
+    fnt = font,
+    size = 10,
+    color = rgb(0, 0, 0),
+  ) => {
+    page.drawText(text, { x: xPos, y: yPos, font: fnt, size, color });
   };
 
-  const physicalLines: string[] = [];
-  for (const line of lines) {
-    for (const part of wrapText(line, 110)) physicalLines.push(part);
-  }
-
-  const maxLinesPerPage = 48;
-  const pagesLines: string[][] = [];
-  for (let i = 0; i < physicalLines.length; i += maxLinesPerPage) {
-    pagesLines.push(physicalLines.slice(i, i + maxLinesPerPage));
-  }
-  if (pagesLines.length === 0) pagesLines.push([""]);
-
-  const encoder = new TextEncoder();
-  const offsets: number[] = [];
-  let pdf = "%PDF-1.4\n";
-
-  const addObject = (obj: string) => {
-    offsets.push(pdf.length);
-    pdf += obj;
+  const ensureSpace = (linesNeeded: number) => {
+    const needed = linesNeeded * LINE_HEIGHT;
+    if (y - MARGIN < needed) {
+      page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      y = PAGE_HEIGHT - MARGIN;
+    }
   };
 
-  const pageCount = pagesLines.length;
+  // ── Title & Header ─────────────────────────────────────────────────────
+  drawText("LAPORAN KAS RT 03", MARGIN, y, boldFont, 16);
+  y -= LINE_HEIGHT * 1.5;
 
-  addObject("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-
-  let kids = "";
-  for (let i = 0; i < pageCount; i++) kids += `${3 + i} 0 R `;
-  addObject(
-    `2 0 obj\n<< /Type /Pages /Kids [${kids.trim()}] /Count ${pageCount} >>\nendobj\n`,
+  drawText(
+    `Periode: ${startLabel} s.d. ${endLabel}`,
+    MARGIN,
+    y,
+    font,
+    10,
+    rgb(0.3, 0.3, 0.3),
   );
+  y -= LINE_HEIGHT;
 
-  const fontObjNum = 3 + pageCount;
-  const contentsStartNum = fontObjNum + 1;
-
-  for (let i = 0; i < pageCount; i++) {
-    addObject(
-      `${3 + i} 0 obj\n` +
-        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${contentsStartNum + i} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >>\n` +
-        "endobj\n",
+  if (categoryFilter) {
+    drawText(
+      `Filter kategori: ${categoryFilter}`,
+      MARGIN,
+      y,
+      font,
+      10,
+      rgb(0.3, 0.3, 0.3),
     );
+    y -= LINE_HEIGHT;
+  }
+  if (blockFilter) {
+    drawText(
+      `Filter blok: ${blockFilter}`,
+      MARGIN,
+      y,
+      font,
+      10,
+      rgb(0.3, 0.3, 0.3),
+    );
+    y -= LINE_HEIGHT;
   }
 
-  addObject(
-    `${fontObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`,
-  );
+  y -= LINE_HEIGHT * 0.5;
 
-  for (let i = 0; i < pageCount; i++) {
-    const parts: string[] = ["BT", "/F1 10 Tf", "50 770 Td"];
-    for (const line of pagesLines[i]!) {
-      parts.push(`(${escapeText(line)}) Tj`);
-      parts.push("0 -14 Td");
+  // ── Summary Section ─────────────────────────────────────────────────────
+  drawText("RINGKASAN", MARGIN, y, boldFont, 12);
+  y -= LINE_HEIGHT;
+  drawText(`Total pemasukan  : ${formatCurrency(totalIncome)}`, MARGIN, y);
+  y -= LINE_HEIGHT;
+  drawText(`Total pengeluaran: ${formatCurrency(totalExpense)}`, MARGIN, y);
+  y -= LINE_HEIGHT;
+  drawText(
+    `Saldo bersih     : ${formatCurrency(net)}`,
+    MARGIN,
+    y,
+    boldFont,
+    10,
+    net >= 0 ? rgb(0.1, 0.5, 0.2) : rgb(0.7, 0.1, 0.1),
+  );
+  y -= LINE_HEIGHT * 1.5;
+
+  // ── Transaction Table ───────────────────────────────────────────────────
+  drawText("RINCIAN TRANSAKSI", MARGIN, y, boldFont, 12);
+  y -= LINE_HEIGHT;
+
+  // Column positions
+  const colDate = MARGIN;
+  const colTitle = MARGIN + 80;
+  const colBlock = MARGIN + 280;
+  const colCategory = MARGIN + 340;
+  const colType = MARGIN + 420;
+  const colAmount = MARGIN + 490;
+
+  // Header row
+  drawText("Tanggal", colDate, y, boldFont, 8);
+  drawText("Judul", colTitle, y, boldFont, 8);
+  drawText("Blok", colBlock, y, boldFont, 8);
+  drawText("Kategori", colCategory, y, boldFont, 8);
+  drawText("Tipe", colType, y, boldFont, 8);
+  drawText("Nominal", colAmount, y, boldFont, 8);
+  y -= LINE_HEIGHT * 0.8;
+
+  // Separator line
+  page.drawRectangle({
+    x: MARGIN,
+    y: y - 1,
+    width: PAGE_WIDTH - MARGIN * 2,
+    height: 1,
+    color: rgb(0.7, 0.7, 0.7),
+  });
+  y -= LINE_HEIGHT * 0.5;
+
+  if (rows.length === 0) {
+    drawText(
+      "Tidak ada transaksi untuk filter ini.",
+      MARGIN,
+      y,
+      font,
+      10,
+      rgb(0.5, 0.5, 0.5),
+    );
+  } else {
+    ensureSpace(rows.length * 2 + 2);
+
+    for (const row of rows) {
+      const typeLabel = row.type === "income" ? "Pemasukan" : "Pengeluaran";
+      const typeColor =
+        row.type === "income" ? rgb(0.1, 0.5, 0.2) : rgb(0.7, 0.1, 0.1);
+
+      drawText(formatDateShort(row.date), colDate, y, font, 8);
+      drawText(row.title ?? "-", colTitle, y, font, 8);
+      drawText(row.reference ?? "-", colBlock, y, font, 8);
+      drawText(row.category ?? "-", colCategory, y, font, 8);
+      drawText(typeLabel, colType, y, font, 8, typeColor);
+      drawText(formatCurrency(Number(row.amount)), colAmount, y, font, 8);
+      y -= LINE_HEIGHT;
+
+      if (row.details?.trim()) {
+        drawText(
+          `Catatan: ${row.details}`,
+          colTitle,
+          y,
+          font,
+          7,
+          rgb(0.5, 0.5, 0.5),
+        );
+        y -= LINE_HEIGHT * 0.7;
+      }
     }
-    parts.push("ET");
-    const stream = parts.join("\n");
-    const length = encoder.encode(stream).length;
-    addObject(
-      `${contentsStartNum + i} 0 obj\n<< /Length ${length} >>\nstream\n${stream}\nendstream\nendobj\n`,
-    );
   }
 
-  const xrefStart = pdf.length;
-  pdf += "xref\n";
-  pdf += `0 ${offsets.length + 1}\n`;
-  pdf += "0000000000 65535 f \n";
-  for (const offset of offsets)
-    pdf += `${offset.toString().padStart(10, "0")} 00000 n \n`;
-  pdf += "trailer\n";
-  pdf += `<< /Size ${offsets.length + 1} /Root 1 0 R >>\n`;
-  pdf += "startxref\n";
-  pdf += `${xrefStart}\n`;
-  pdf += "%%EOF";
-
-  return encoder.encode(pdf);
+  return pdfDoc.save();
 }
 
-// ── Excel builder (exceljs) ──────────────────────────────────────────────────
+// ── Excel Builder (exceljs) ──────────────────────────────────────────────────
 
 async function buildExcel(
-  rows: Row[],
+  rows: TransactionRow[],
   startLabel: string,
   endLabel: string,
   categoryFilter: string | null,
@@ -193,189 +273,185 @@ async function buildExcel(
   const GREEN_DARK = "1A6B3C";
   const GREEN_MID = "2D8653";
   const GREEN_LIGHT = "E8F5EE";
-  const GREEN_STRIPE = "F3FAF6";
-  const RED_SOFT = "C0392B";
-  const BORDER_COLOR = "B2D8C4";
-  const GREY_TEXT = "6B7280";
+  const GREEN_STRIPE = "F4FAF6";
+  const RED_SOFT = "FDECEA";
+  const BORDER_COLOR = "D0D5DD";
+  const GREY_TEXT = "667085";
   const WHITE = "FFFFFF";
 
   const thinBorder: Partial<ExcelJS.Border> = {
     style: "thin",
-    color: { argb: "FF" + BORDER_COLOR },
+    color: { argb: BORDER_COLOR },
   };
   const medBorder: Partial<ExcelJS.Border> = {
     style: "medium",
-    color: { argb: "FF" + GREEN_MID },
+    color: { argb: GREEN_DARK },
   };
 
-  // ── Helper: apply border to a row range ────────────────────────────────────
-  const applyTableBorder = (
-    row: ExcelJS.Row,
-    isFirst: boolean,
-    isLast: boolean,
-  ) => {
+  const applyTableBorder = (rowNum: number) => {
     for (let c = 1; c <= COL_COUNT; c++) {
-      const cell = row.getCell(c);
+      const cell = sheet.getCell(rowNum, c);
       cell.border = {
-        top: isFirst ? medBorder : thinBorder,
-        bottom: isLast ? medBorder : thinBorder,
-        left: c === 1 ? medBorder : thinBorder,
-        right: c === COL_COUNT ? medBorder : thinBorder,
+        top: thinBorder,
+        bottom: thinBorder,
+        left: thinBorder,
+        right: thinBorder,
       };
     }
   };
 
   let currentRow = 1;
 
-  // ── SECTION 1 : Report title ───────────────────────────────────────────────
-  const titleRow = sheet.getRow(currentRow++);
-  titleRow.height = 30;
+  // ── Title Row ───────────────────────────────────────────────────────────────
+  const titleRow = sheet.getRow(currentRow);
+  titleRow.height = 32;
   const titleCell = titleRow.getCell(1);
-  titleCell.value = "LAPORAN KAS RT 03";
-  titleCell.font = { bold: true, size: 16, color: { argb: "FF" + GREEN_DARK } };
-  titleCell.alignment = { horizontal: "center", vertical: "middle" };
+  titleCell.value = "Laporan Kas RT 03";
+  titleCell.font = { bold: true, size: 16, color: { argb: GREEN_DARK } };
+  titleCell.alignment = { horizontal: "left", vertical: "middle" };
   titleCell.fill = {
     type: "pattern",
     pattern: "solid",
-    fgColor: { argb: "FF" + GREEN_LIGHT },
+    fgColor: { argb: GREEN_LIGHT },
   };
-  sheet.mergeCells(`A${titleRow.number}:${lastCol}${titleRow.number}`);
+  sheet.mergeCells(currentRow, 1, currentRow, COL_COUNT);
+  currentRow++;
 
-  // Period row
-  const periodRow = sheet.getRow(currentRow++);
-  periodRow.height = 18;
+  // ── Period Row ──────────────────────────────────────────────────────────────
+  const periodRow = sheet.getRow(currentRow);
+  periodRow.height = 20;
   const periodCell = periodRow.getCell(1);
-  periodCell.value = `Periode: ${startLabel}  s.d.  ${endLabel}`;
-  periodCell.font = { size: 11, color: { argb: "FF" + GREEN_DARK } };
-  periodCell.alignment = { horizontal: "center", vertical: "middle" };
-  periodCell.fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FF" + GREEN_LIGHT },
-  };
-  sheet.mergeCells(`A${periodRow.number}:${lastCol}${periodRow.number}`);
+  periodCell.value = `Periode: ${startLabel} s.d. ${endLabel}`;
+  periodCell.font = { size: 11, color: { argb: GREY_TEXT } };
+  periodCell.alignment = { horizontal: "left", vertical: "middle" };
+  sheet.mergeCells(currentRow, 1, currentRow, COL_COUNT);
+  currentRow++;
 
-  // Optional filter rows
   if (categoryFilter) {
-    const r = sheet.getRow(currentRow++);
-    r.height = 16;
+    const r = sheet.getRow(currentRow);
+    r.height = 18;
     const c = r.getCell(1);
-    c.value = `Filter Kategori: ${categoryFilter}`;
-    c.font = { size: 10, italic: true, color: { argb: "FF" + GREY_TEXT } };
-    c.alignment = { horizontal: "center", vertical: "middle" };
-    sheet.mergeCells(`A${r.number}:${lastCol}${r.number}`);
+    c.value = `Filter kategori: ${categoryFilter}`;
+    c.font = { size: 10, italic: true, color: { argb: GREY_TEXT } };
+    c.alignment = { horizontal: "left", vertical: "middle" };
+    sheet.mergeCells(currentRow, 1, currentRow, COL_COUNT);
+    currentRow++;
   }
   if (blockFilter) {
-    const r = sheet.getRow(currentRow++);
-    r.height = 16;
+    const r = sheet.getRow(currentRow);
+    r.height = 18;
     const c = r.getCell(1);
-    c.value = `Filter Blok: ${blockFilter}`;
-    c.font = { size: 10, italic: true, color: { argb: "FF" + GREY_TEXT } };
-    c.alignment = { horizontal: "center", vertical: "middle" };
-    sheet.mergeCells(`A${r.number}:${lastCol}${r.number}`);
+    c.value = `Filter blok: ${blockFilter}`;
+    c.font = { size: 10, italic: true, color: { argb: GREY_TEXT } };
+    c.alignment = { horizontal: "left", vertical: "middle" };
+    sheet.mergeCells(currentRow, 1, currentRow, COL_COUNT);
+    currentRow++;
   }
 
-  // Spacer
-  sheet.getRow(currentRow++).height = 6;
+  currentRow++; // spacer
 
-  // ── SECTION 2 : Summary ────────────────────────────────────────────────────
-  const summaryHeaderRow = sheet.getRow(currentRow++);
-  summaryHeaderRow.height = 20;
+  // ── Summary Section ─────────────────────────────────────────────────────────
+  const summaryHeaderRow = sheet.getRow(currentRow);
+  summaryHeaderRow.height = 24;
   const shc = summaryHeaderRow.getCell(1);
-  shc.value = "RINGKASAN";
-  shc.font = { bold: true, size: 11, color: { argb: "FF" + WHITE } };
+  shc.value = "Ringkasan";
+  shc.font = { bold: true, size: 12, color: { argb: GREEN_DARK } };
   shc.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
   shc.fill = {
     type: "pattern",
     pattern: "solid",
-    fgColor: { argb: "FF" + GREEN_MID },
+    fgColor: { argb: GREEN_LIGHT },
   };
-  sheet.mergeCells(
-    `A${summaryHeaderRow.number}:${lastCol}${summaryHeaderRow.number}`,
-  );
+  sheet.mergeCells(currentRow, 1, currentRow, COL_COUNT);
+  currentRow++;
 
   const summaryData = [
     {
       label: "Total Pemasukan",
       value: totalIncome,
-      color: "1A6B3C",
+      color: GREEN_MID,
       bold: false,
     },
     {
       label: "Total Pengeluaran",
       value: totalExpense,
-      color: RED_SOFT,
+      color: "C0392B",
       bold: false,
     },
     {
       label: "Saldo Bersih",
       value: net,
-      color: net >= 0 ? "1A6B3C" : RED_SOFT,
+      color: net >= 0 ? GREEN_DARK : "C0392B",
       bold: true,
     },
   ];
 
-  for (const s of summaryData) {
-    const r = sheet.getRow(currentRow++);
-    r.height = 18;
-
+  for (const item of summaryData) {
+    const r = sheet.getRow(currentRow);
+    r.height = 20;
     const labelCell = r.getCell(1);
-    labelCell.value = s.label;
-    labelCell.font = { bold: s.bold, size: 10, color: { argb: "FF333333" } };
-    labelCell.alignment = { horizontal: "left", vertical: "middle", indent: 2 };
+    labelCell.value = item.label;
+    labelCell.font = {
+      bold: item.bold,
+      size: 11,
+      color: { argb: item.color },
+    };
+    labelCell.alignment = {
+      horizontal: "left",
+      vertical: "middle",
+      indent: 2,
+    };
     labelCell.fill = {
       type: "pattern",
       pattern: "solid",
-      fgColor: { argb: "FFF9FAFB" },
+      fgColor: { argb: GREEN_LIGHT },
     };
-    sheet.mergeCells(`A${r.number}:E${r.number}`);
 
-    const valueCell = r.getCell(6);
-    valueCell.value = s.value;
-    valueCell.numFmt = '"Rp "#,##0';
+    const valueCell = r.getCell(COL_COUNT);
+    valueCell.value = item.value;
+    valueCell.numFmt = "#,##0";
     valueCell.font = {
-      bold: s.bold,
-      size: 10,
-      color: { argb: "FF" + s.color },
+      bold: item.bold,
+      size: item.bold ? 12 : 11,
+      color: { argb: item.color },
     };
     valueCell.alignment = { horizontal: "right", vertical: "middle" };
     valueCell.fill = {
       type: "pattern",
       pattern: "solid",
-      fgColor: { argb: "FFF9FAFB" },
+      fgColor: { argb: GREEN_LIGHT },
     };
-    sheet.mergeCells(`F${r.number}:${lastCol}${r.number}`);
+    sheet.mergeCells(currentRow, 1, currentRow, COL_COUNT - 1);
+    currentRow++;
   }
 
-  // Spacer
-  sheet.getRow(currentRow++).height = 6;
+  currentRow++; // spacer
 
-  // ── SECTION 3 : Transactions table ────────────────────────────────────────
-  const tableHeaderRow = sheet.getRow(currentRow++);
-  tableHeaderRow.height = 20;
+  // ── Transaction Table ───────────────────────────────────────────────────────
+  const tableHeaderRow = sheet.getRow(currentRow);
+  tableHeaderRow.height = 22;
   const thc = tableHeaderRow.getCell(1);
-  thc.value = "RINCIAN TRANSAKSI";
-  thc.font = { bold: true, size: 11, color: { argb: "FF" + WHITE } };
+  thc.value = "Rincian Transaksi";
+  thc.font = { bold: true, size: 12, color: { argb: GREEN_DARK } };
   thc.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
   thc.fill = {
     type: "pattern",
     pattern: "solid",
-    fgColor: { argb: "FF" + GREEN_MID },
+    fgColor: { argb: GREEN_LIGHT },
   };
-  sheet.mergeCells(
-    `A${tableHeaderRow.number}:${lastCol}${tableHeaderRow.number}`,
-  );
+  sheet.mergeCells(currentRow, 1, currentRow, COL_COUNT);
+  currentRow++;
 
   const colHeaders = [
     "No",
     "Tanggal",
-    "Judul Transaksi",
+    "Judul",
     "Blok",
     "Kategori",
     "Tipe",
     "Nominal",
   ];
-  const colAligns: ExcelJS.Alignment["horizontal"][] = [
+  const colAligns = [
     "center",
     "center",
     "left",
@@ -384,53 +460,52 @@ async function buildExcel(
     "center",
     "right",
   ];
-
-  const colHeaderRow = sheet.getRow(currentRow++);
+  const colHeaderRow = sheet.getRow(currentRow);
   colHeaderRow.height = 20;
-  colHeaders.forEach((h, i) => {
+  for (let i = 0; i < colHeaders.length; i++) {
     const cell = colHeaderRow.getCell(i + 1);
-    cell.value = h;
-    cell.font = { bold: true, size: 10, color: { argb: "FF" + WHITE } };
-    cell.alignment = { horizontal: colAligns[i], vertical: "middle" };
+    cell.value = colHeaders[i];
+    cell.font = { bold: true, size: 10, color: { argb: WHITE } };
+    cell.alignment = {
+      horizontal: colAligns[i] as "left" | "center" | "right",
+      vertical: "middle",
+    };
     cell.fill = {
       type: "pattern",
       pattern: "solid",
-      fgColor: { argb: "FF" + GREEN_DARK },
+      fgColor: { argb: GREEN_MID },
     };
     cell.border = {
       top: medBorder,
       bottom: medBorder,
-      left: i === 0 ? medBorder : thinBorder,
-      right: i === COL_COUNT - 1 ? medBorder : thinBorder,
+      left: thinBorder,
+      right: thinBorder,
     };
-  });
+  }
+  currentRow++;
 
   const dataStartRow = currentRow;
 
   if (rows.length === 0) {
-    const emptyRow = sheet.getRow(currentRow++);
-    emptyRow.height = 18;
+    const emptyRow = sheet.getRow(currentRow);
+    emptyRow.height = 24;
     const ec = emptyRow.getCell(1);
     ec.value = "Tidak ada transaksi untuk filter ini.";
-    ec.font = { italic: true, size: 10, color: { argb: "FF" + GREY_TEXT } };
+    ec.font = { italic: true, size: 10, color: { argb: GREY_TEXT } };
     ec.alignment = { horizontal: "center", vertical: "middle" };
-    sheet.mergeCells(`A${emptyRow.number}:${lastCol}${emptyRow.number}`);
-    applyTableBorder(emptyRow, true, true);
+    sheet.mergeCells(currentRow, 1, currentRow, COL_COUNT);
+    currentRow++;
   } else {
-    rows.forEach((row, idx) => {
-      const isLast = idx === rows.length - 1;
-      const isEven = idx % 2 === 1;
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const isLast = i === rows.length - 1;
+      const isEven = i % 2 === 0;
       const rowBg = isEven ? GREEN_STRIPE : WHITE;
 
-      const r = sheet.getRow(currentRow++);
+      const r = sheet.getRow(currentRow);
       r.height = 18;
-
-      const cells: {
-        value: ExcelJS.CellValue;
-        align: ExcelJS.Alignment["horizontal"];
-        numFmt?: string;
-      }[] = [
-        { value: idx + 1, align: "center" },
+      const cells = [
+        { value: i + 1, align: "center" },
         { value: formatDateShort(row.date), align: "center" },
         { value: row.title ?? "-", align: "left" },
         { value: row.reference ?? "-", align: "center" },
@@ -439,110 +514,132 @@ async function buildExcel(
           value: row.type === "income" ? "Pemasukan" : "Pengeluaran",
           align: "center",
         },
-        { value: Number(row.amount), align: "right", numFmt: '"Rp "#,##0' },
+        { value: Number(row.amount), align: "right" },
       ];
 
-      cells.forEach((cd, ci) => {
-        const cell = r.getCell(ci + 1);
-        cell.value = cd.value;
-        if (cd.numFmt) cell.numFmt = cd.numFmt;
+      for (let j = 0; j < cells.length; j++) {
+        const cell = r.getCell(j + 1);
+        cell.value = cells[j].value;
         cell.alignment = {
-          horizontal: cd.align,
+          horizontal: cells[j].align as "left" | "center" | "right",
           vertical: "middle",
-          wrapText: ci === 2,
+          wrapText: j === 2,
         };
         cell.fill = {
           type: "pattern",
           pattern: "solid",
-          fgColor: { argb: "FF" + rowBg },
+          fgColor: { argb: rowBg },
+        };
+        cell.border = {
+          top: thinBorder,
+          bottom: isLast ? medBorder : thinBorder,
+          left: thinBorder,
+          right: thinBorder,
         };
 
-        // Colour-code the Tipe column
-        if (ci === 5) {
+        if (j === 5) {
           cell.font = {
             size: 10,
-            bold: true,
+            bold: false,
             color: {
-              argb: row.type === "income" ? "FF" + GREEN_DARK : "FF" + RED_SOFT,
+              argb: row.type === "income" ? GREEN_DARK : "C0392B",
             },
           };
-        } else if (ci === 6) {
+        } else if (j === 6) {
+          cell.numFmt = "#,##0";
           cell.font = {
             size: 10,
-            bold: true,
+            bold: false,
             color: {
-              argb: row.type === "income" ? "FF" + GREEN_DARK : "FF" + RED_SOFT,
+              argb: row.type === "income" ? GREEN_DARK : "C0392B",
             },
           };
         } else {
           cell.font = { size: 10 };
         }
-      });
+      }
 
-      applyTableBorder(r, idx === 0, isLast);
-    });
+      if (row.details?.trim()) {
+        currentRow++;
+        const noteRow = sheet.getRow(currentRow);
+        noteRow.height = 16;
+        const noteCell = noteRow.getCell(3);
+        noteCell.value = `Catatan: ${row.details}`;
+        noteCell.font = { size: 9, italic: true, color: { argb: GREY_TEXT } };
+        noteCell.alignment = {
+          horizontal: "left",
+          vertical: "middle",
+          wrapText: true,
+        };
+        sheet.mergeCells(currentRow, 3, currentRow, COL_COUNT);
+      }
 
-    // ── Totals footer row ──────────────────────────────────────────────────
-    const totalsRow = sheet.getRow(currentRow++);
-    totalsRow.height = 20;
-
-    const tc1 = totalsRow.getCell(1);
-    tc1.value = "TOTAL";
-    tc1.font = { bold: true, size: 10, color: { argb: "FF" + WHITE } };
-    tc1.alignment = { horizontal: "center", vertical: "middle" };
-    tc1.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FF" + GREEN_DARK },
-    };
-    sheet.mergeCells(`A${totalsRow.number}:E${totalsRow.number}`);
-
-    const typeCell = totalsRow.getCell(6);
-    typeCell.value = "Saldo Bersih";
-    typeCell.font = { bold: true, size: 10, color: { argb: "FF" + WHITE } };
-    typeCell.alignment = { horizontal: "center", vertical: "middle" };
-    typeCell.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FF" + GREEN_DARK },
-    };
-
-    const netCell = totalsRow.getCell(7);
-    netCell.value = net;
-    netCell.numFmt = '"Rp "#,##0';
-    netCell.font = {
-      bold: true,
-      size: 10,
-      color: { argb: net >= 0 ? "FFFFFFFF" : "FFFFCCCC" },
-    };
-    netCell.alignment = { horizontal: "right", vertical: "middle" };
-    netCell.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FF" + GREEN_DARK },
-    };
-
-    for (let c = 1; c <= COL_COUNT; c++) {
-      totalsRow.getCell(c).border = {
-        top: medBorder,
-        bottom: medBorder,
-        left: c === 1 ? medBorder : thinBorder,
-        right: c === COL_COUNT ? medBorder : thinBorder,
-      };
+      currentRow++;
     }
   }
 
-  // ── Print area and freeze panes ────────────────────────────────────────────
+  // ── Totals Row ──────────────────────────────────────────────────────────────
+  const totalsRow = sheet.getRow(currentRow);
+  totalsRow.height = 22;
+  const tc1 = totalsRow.getCell(1);
+  tc1.value = "Total";
+  tc1.font = { bold: true, size: 11, color: { argb: GREEN_DARK } };
+  tc1.alignment = { horizontal: "left", vertical: "middle" };
+  tc1.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: GREEN_LIGHT },
+  };
+  sheet.mergeCells(currentRow, 1, currentRow, COL_COUNT - 2);
+
+  const typeCell = totalsRow.getCell(COL_COUNT - 1);
+  typeCell.value = "";
+  typeCell.font = { bold: true, size: 11, color: { argb: GREEN_DARK } };
+  typeCell.alignment = { horizontal: "center", vertical: "middle" };
+  typeCell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: GREEN_LIGHT },
+  };
+
+  const netCell = totalsRow.getCell(COL_COUNT);
+  netCell.value = net;
+  netCell.numFmt = "#,##0";
+  netCell.font = {
+    bold: true,
+    size: 12,
+    color: { argb: net >= 0 ? GREEN_DARK : "C0392B" },
+  };
+  netCell.alignment = { horizontal: "right", vertical: "middle" };
+  netCell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: GREEN_LIGHT },
+  };
+  netCell.border = {
+    top: medBorder,
+    bottom: medBorder,
+    left: thinBorder,
+    right: thinBorder,
+  };
+
+  // Freeze panes
   sheet.views = [{ state: "frozen", xSplit: 0, ySplit: dataStartRow - 1 }];
 
   const buffer = await workbook.xlsx.writeBuffer();
-  return buffer;
+  return buffer as ArrayBuffer;
 }
 
 // ── GET handler ──────────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
   try {
+    // ── Auth check ─────────────────────────────────────────────────────────
+    const session = await getSessionFromCookie();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const tenantId = DEFAULT_TENANT_ID;
     const communityId = DEFAULT_COMMUNITY_ID;
 
@@ -608,7 +705,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const rows = data as Row[];
+    const rows = data as TransactionRow[];
 
     let totalIncome = 0;
     let totalExpense = 0;
@@ -648,41 +745,16 @@ export async function GET(request: Request) {
     }
 
     // ── PDF ────────────────────────────────────────────────────────────────
-    const lines: string[] = [];
-    lines.push("LAPORAN KAS RT 03");
-    lines.push("========================================");
-    lines.push(`Periode: ${startLabel} s.d. ${endLabel}`);
-    if (categoryFilter) lines.push(`Filter kategori : ${categoryFilter}`);
-    if (blockFilter) lines.push(`Filter blok     : ${blockFilter}`);
-    lines.push("");
-    lines.push("RINGKASAN");
-    lines.push("----------------------------------------");
-    lines.push(`Total pemasukan  : ${formatCurrency(totalIncome)}`);
-    lines.push(`Total pengeluaran: ${formatCurrency(totalExpense)}`);
-    lines.push(`Saldo bersih     : ${formatCurrency(net)}`);
-    lines.push("");
-    lines.push("RINCIAN TRANSAKSI");
-    lines.push("----------------------------------------");
-
-    if (rows.length === 0) {
-      lines.push("Tidak ada transaksi untuk filter ini.");
-    } else {
-      lines.push("Tanggal    | Judul | Blok | Kategori | Tipe | Nominal");
-      lines.push(
-        "----------------------------------------------------------------------------------------------------------------------------------",
-      );
-      for (const row of rows) {
-        const typeLabel = row.type === "income" ? "Pemasukan" : "Pengeluaran";
-        const amountLabel = formatCurrency(Number(row.amount));
-        lines.push(
-          `${formatDateShort(row.date)} | ${row.title ?? "-"} | ${row.reference ?? "-"} | ${row.category ?? "-"} | ${typeLabel} | ${amountLabel}`,
-        );
-        if (row.details?.trim()) lines.push(`Catatan: ${row.details}`);
-        lines.push("");
-      }
-    }
-
-    const pdfBytes = buildSimplePdf(lines);
+    const pdfBytes = await buildPdf(
+      rows,
+      startLabel,
+      endLabel,
+      categoryFilter,
+      blockFilter,
+      totalIncome,
+      totalExpense,
+      net,
+    );
     const fileName = `laporan-kas-rt_${start}_sampai_${end}.pdf`;
 
     return new NextResponse(pdfBytes as unknown as BodyInit, {

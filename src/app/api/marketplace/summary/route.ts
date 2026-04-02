@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionFromCookie } from "@/lib/auth/session";
 
 export async function GET() {
+  // Require authentication to access marketplace data
+  const session = await getSessionFromCookie();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const supabase = createServerClient();
 
   try {
@@ -38,13 +45,16 @@ export async function GET() {
 
     domains?.forEach((domain) => {
       if (domain.code === "UMKM" || domain.code === "JASA") {
-        const domainCategories = categories?.filter((c) => c.domain_id === domain.id) || [];
-        
+        const domainCategories =
+          categories?.filter((c) => c.domain_id === domain.id) || [];
+
         domainCategories.forEach((category) => {
-          const categoryItems = items?.filter(
-            (item) => item.category_id === category.id && item.status === "ACTIVE"
-          ) || [];
-          
+          const categoryItems =
+            items?.filter(
+              (item) =>
+                item.category_id === category.id && item.status === "ACTIVE",
+            ) || [];
+
           let cheapest = null;
           if (categoryItems.length > 0) {
             cheapest = Math.min(...categoryItems.map((i) => i.final_price));
@@ -56,7 +66,7 @@ export async function GET() {
             title: category.name,
             description: category.description,
             cheapest: cheapest,
-            itemCount: categoryItems.length
+            itemCount: categoryItems.length,
           });
         });
       }
@@ -66,7 +76,7 @@ export async function GET() {
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

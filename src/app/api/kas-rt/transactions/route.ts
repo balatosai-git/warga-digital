@@ -406,8 +406,36 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const categoryFilter = searchParams.get("category")?.trim() || null;
 
+    // ── Pagination parameters ──────────────────────────────────────────────
+    const rawLimit = parseInt(searchParams.get("limit") ?? "50", 10);
+    const rawOffset = parseInt(searchParams.get("offset") ?? "0", 10);
+    const limit = Math.min(
+      Math.max(Number.isFinite(rawLimit) ? rawLimit : 50, 1),
+      200,
+    );
+    const offset = Math.max(Number.isFinite(rawOffset) ? rawOffset : 0, 0);
+
     const supabase = createServerClient();
 
+    // ── Get total count for pagination metadata ────────────────────────────
+    let countQuery = supabase
+      .from("kas_rt_transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("community_id", communityId)
+      .is("deleted_at", null);
+
+    if (categoryFilter) {
+      countQuery = countQuery.ilike("category", `%${categoryFilter}%`);
+    }
+
+    const { count: totalCount, error: countError } = await countQuery;
+
+    if (countError) {
+      console.error("[Kas RT] Count transactions error:", countError);
+    }
+
+    // ── Fetch paginated transactions ───────────────────────────────────────
     let query = supabase
       .from("kas_rt_transactions")
       .select(
@@ -416,7 +444,8 @@ export async function GET(request: Request) {
       .eq("tenant_id", tenantId)
       .eq("community_id", communityId)
       .is("deleted_at", null)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (categoryFilter) {
       query = query.ilike("category", `%${categoryFilter}%`);
@@ -478,7 +507,15 @@ export async function GET(request: Request) {
       }),
     );
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      transactions: result,
+      pagination: {
+        limit,
+        offset,
+        total: totalCount ?? 0,
+        hasMore: offset + limit < (totalCount ?? 0),
+      },
+    });
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error("[Kas RT] Unexpected GET error:", error);
